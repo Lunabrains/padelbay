@@ -212,13 +212,13 @@ function Hero() {
   return (
     <section data-pose="hero" data-zone="" data-stagezone="intro" className="relative flex h-[100svh] min-h-[640px] flex-col justify-end">
       <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-ink/80 via-ink/10 to-transparent" />
-      <div className="relative px-5 pb-32 md:px-10 md:pb-14">
+      <div className="relative px-5 pb-[136px] md:px-10 md:pb-14">
         <div data-hero-fade className="flex items-center gap-3 text-white/80">
           <span className="label-caps">Ramlet El Baida · Beirut</span>
           <span className="h-px w-12 bg-white/40" />
           <span className="label-caps hidden sm:inline">Sports & hospitality, reimagined</span>
         </div>
-        <h1 data-hero className="mt-4 font-display text-[23vw] font-bold lowercase leading-[0.8] tracking-[-0.05em] text-white md:text-[13.5vw]">
+        <h1 data-hero className="mt-4 font-display text-[21vw] font-bold lowercase leading-[0.8] tracking-[-0.05em] text-white md:text-[13.5vw]">
           <span className="block overflow-hidden pb-[0.06em]">
             <span className="word inline-block">be</span> <span className="word inline-block">the</span>
           </span>
@@ -227,8 +227,8 @@ function Hero() {
           </span>
         </h1>
         <div className="mt-4 flex flex-col gap-6 md:mt-2 md:flex-row md:items-end md:justify-between">
-          <p data-hero-fade className="max-w-md text-[15px] leading-relaxed text-white/85 md:text-[17px]">
-            <span className="font-semibold text-white">Play hard. Sip slow.</span> Indoor and sea-side padel, specialty coffee by Sip, stays on the sand, and a club that levels up with you.
+          <p data-hero-fade className="max-w-md text-[14px] leading-relaxed text-white/85 md:text-[17px]">
+            <span className="font-semibold text-white">Play hard. Sip slow.</span> Indoor and sea-side padel, specialty coffee by Sip<span className="hidden sm:inline">, stays on the sand, and a club that levels up with you</span>.
           </p>
           <div data-hero-fade className="flex flex-wrap gap-3">
             <Link href="/courts" className="group flex h-13 items-center gap-2 rounded-full bg-white px-6 py-3.5 text-[14px] font-semibold text-ink transition hover:bg-sage">
