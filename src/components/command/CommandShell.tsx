@@ -5,9 +5,12 @@ import dynamic from "next/dynamic";
 import Link from "next/link";
 import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import {
-  BarChart3, Bell, BedDouble, BrainCircuit, ChevronDown, ClipboardList, Coffee, Crown, Delete, KeyRound, LogOut, Megaphone,
-  Shield, Sparkles, Square, Users, Wallet, X,
+  BarChart3, Bell, BedDouble, BrainCircuit, CalendarCheck, ChevronDown, ClipboardList, Coffee, Crown, Delete, KeyRound, LogOut, Megaphone,
+  Pause, Play, ReceiptText, Shield, Sparkles, Square, Users, Wallet, X, Zap,
 } from "lucide-react";
+import { useFx } from "@/lib/fx";
+import { simulateBurst, simulateOnce } from "@/lib/simulate";
+import { useOwnerKpis } from "./Backoffice";
 import { LogoDuoLight } from "@/components/brand/Logo";
 import { POSES, flyTo } from "@/components/three/rig";
 import { Avatar, SimBadge } from "@/components/ui/kit";
@@ -27,7 +30,7 @@ const Venue2D = dynamic(() => import("@/components/three/Venue2D"), { ssr: false
 type Facility = { kind: "court"; id: string } | { kind: "cafe" } | { kind: "suites"; id?: string } | null;
 
 const MODULE_ICON: Record<ModuleId, typeof Users> = {
-  crm: Users, analytics: BarChart3, forecast: BrainCircuit, marketing: Megaphone, tasks: ClipboardList, access: KeyRound, members: Crown, finance: Wallet, team: Shield,
+  reservations: CalendarCheck, orders: ReceiptText, crm: Users, analytics: BarChart3, forecast: BrainCircuit, marketing: Megaphone, tasks: ClipboardList, access: KeyRound, members: Crown, finance: Wallet, team: Shield,
 };
 
 export default function CommandShell() {
@@ -38,6 +41,19 @@ export default function CommandShell() {
   const reduced = usePrefersReducedMotion();
   const [facility, setFacility] = useState<Facility>(null);
   const [module, setModule] = useState<ModuleId | null>(null);
+  const [simulating, setSimulating] = useState(false);
+  const staffId = staff?.id;
+
+  // demo traffic: a guest books, orders, reserves or cancels every few seconds
+  useEffect(() => {
+    if (!simulating || !staffId) return;
+    const first = setTimeout(() => simulateOnce(), 800);
+    const id = setInterval(() => simulateOnce(), 6_000);
+    return () => {
+      clearTimeout(first);
+      clearInterval(id);
+    };
+  }, [simulating, staffId]);
 
   useEffect(() => {
     useStage.getState().set({ mode: "ops", zone: "command", focusId: undefined, interactive: true, webgl: hasWebGL(), reducedMotion: reduced, quality: window.innerWidth < 768 ? "low" : "high" });
@@ -89,7 +105,8 @@ export default function CommandShell() {
         <Login />
       ) : (
         <>
-          <TopBar />
+          <TopBar simulating={simulating} onSimulate={setSimulating} />
+          <OwnerStrip onOpen={setModule} />
           <Briefing onOpen={(m) => setModule(m)} />
           <LiveFeed onOpen={(f) => setFacility(f)} />
           <Dock facility={facility} onFacility={setFacility} onModule={setModule} />
@@ -98,6 +115,7 @@ export default function CommandShell() {
           {facility?.kind === "suites" && <SuitesPanel unitId={facility.id} onClose={() => setFacility(null)} />}
           {module && <ModuleWindow id={module} onClose={() => setModule(null)} />}
           <OpsToasts />
+          <FxToasts />
         </>
       )}
     </div>
@@ -129,9 +147,9 @@ function Login() {
       <div className="glass-dark animate-rise w-full max-w-[880px] overflow-hidden rounded-[34px] md:grid md:grid-cols-[1.1fr_1fr]">
         <div className="p-7 md:p-9">
           <LogoDuoLight className="w-36" />
-          <p className="label-caps mt-8 text-sage">Staff only</p>
+          <p className="label-caps mt-8 text-sage">Back office · staff only</p>
           <h1 className="mt-2 font-display text-[40px] font-bold lowercase leading-[0.9] tracking-[-0.03em] text-white md:text-[52px]">command<br />center.</h1>
-          <p className="mt-4 max-w-sm text-[13.5px] leading-relaxed text-white/65">The whole bay on one live 3D model: courts, Sip, Bay Suites, guests and the team. What you see depends on your role.</p>
+          <p className="mt-4 max-w-sm text-[13.5px] leading-relaxed text-white/65">How the owner and the team see Padel Bay: every reservation and Sip order as it comes in, on one live 3D model of the venue. What you see depends on your role.</p>
           <div className="mt-6 grid grid-cols-1 gap-1.5 sm:grid-cols-2">
             {staffList.slice(0, 5).map((s) => (
               <button key={s.id} onClick={() => { setSel(s.id); setPin(""); setError(""); }} className={clsx("flex items-center gap-2.5 rounded-2xl border px-3 py-2 text-left transition", sel === s.id ? "border-sage bg-sage/15" : "border-white/10 bg-white/5 hover:bg-white/10")}>
@@ -177,8 +195,30 @@ function Login() {
   );
 }
 
-function TopBar() {
+function OwnerStrip({ onOpen }: { onOpen: (m: ModuleId) => void }) {
+  const k = useOwnerKpis();
+  const items: { label: string; value: string; sub: string; open: ModuleId }[] = [
+    { label: "Revenue today", value: `$${Math.round(k.revenue).toLocaleString()}`, sub: `courts $${Math.round(k.court).toLocaleString()} · Sip $${Math.round(k.cafe).toLocaleString()}`, open: "finance" },
+    { label: "Court sessions today", value: String(k.bookings), sub: `+${k.newBookings} new bookings in the last hour`, open: "reservations" },
+    { label: "Sip orders today", value: String(k.orders), sub: `${k.live} in the kitchen now`, open: "orders" },
+    { label: "Suites in-house", value: String(k.inHouse), sub: "planned concept", open: "reservations" },
+  ];
+  return (
+    <div className="fixed left-1/2 top-[64px] z-20 hidden -translate-x-1/2 gap-1.5 xl:flex">
+      {items.map((it) => (
+        <button key={it.label} onClick={() => onOpen(it.open)} className="glass-dark rounded-[18px] px-4 py-2 text-left transition hover:bg-white/10">
+          <span className="block text-[9.5px] font-semibold uppercase tracking-[0.14em] text-white/50">{it.label}</span>
+          <span className="block text-[17px] font-semibold tabular leading-tight text-white">{it.value}</span>
+          <span className="block text-[10px] text-white/45">{it.sub}</span>
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function TopBar({ simulating, onSimulate }: { simulating: boolean; onSimulate: (v: boolean) => void }) {
   const staff = useStaff()!;
+  const toast = useFx((s) => s.toast);
   const allNotices = useStore((s) => s.db.notices);
   const notices = useMemo(() => allNotices.filter((n) => n.audience === "staff"), [allNotices]);
   const now = useNow(1_000);
@@ -190,13 +230,33 @@ function TopBar() {
       <div className="flex items-center gap-3">
         <Link href="/"><LogoDuoLight className="w-[104px] md:w-[120px]" /></Link>
         <span className="hidden h-6 w-px bg-white/20 md:block" />
-        <span className="label-caps hidden text-white/70 md:block">Command Center</span>
+        <span className="label-caps hidden text-white/70 md:block">Back office · Command Center</span>
         <span className="glass-chip hidden items-center gap-1.5 rounded-full px-3 py-1 text-[11.5px] tabular text-white/80 md:flex">
           <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-sage" /> Live · {fmtTime(now)}:{String(new Date(now).getSeconds()).padStart(2, "0")}
         </span>
       </div>
       <div className="flex items-center gap-2">
-        <Link href="/courts" target="_blank" className="glass-chip hidden h-10 items-center rounded-full px-4 text-[12px] font-medium text-white/85 hover:bg-white/15 md:flex">Customer app ↗</Link>
+        <button
+          onClick={() => {
+            onSimulate(!simulating);
+            toast({ tone: "info", title: simulating ? "Guest simulation paused" : "Simulating live guests", body: simulating ? "No new demo traffic" : "A booking, order, stay or cancellation every few seconds" });
+          }}
+          className={clsx("flex h-10 items-center gap-1.5 rounded-full px-3.5 text-[12px] font-semibold transition", simulating ? "bg-sunset text-ink" : "glass-chip text-white hover:bg-white/15")}
+          title="Generate realistic demo activity"
+        >
+          {simulating ? <Pause size={14} /> : <Play size={14} />} <span className="hidden sm:inline">{simulating ? "Simulating guests" : "Simulate guests"}</span>
+        </button>
+        <button
+          onClick={() => {
+            const done = simulateBurst(8);
+            toast({ tone: "success", title: `${done.length} sample events added`, body: done.slice(0, 3).join(" · ") });
+          }}
+          className="glass-chip hidden h-10 items-center gap-1.5 rounded-full px-3.5 text-[12px] font-medium text-white/85 hover:bg-white/15 sm:flex"
+          title="Add a burst of sample bookings and orders"
+        >
+          <Zap size={14} /> Sample burst
+        </button>
+        <Link href="/courts" target="_blank" className="glass-chip hidden h-10 items-center rounded-full px-4 text-[12px] font-medium text-white/85 hover:bg-white/15 lg:flex">Customer app ↗</Link>
         <div className="relative">
           <button onClick={() => { setOpen((o) => !o); if (!open) markNoticesRead("staff"); }} className="glass-chip relative flex h-10 w-10 items-center justify-center rounded-full text-white hover:bg-white/15" aria-label="Alerts">
             <Bell size={17} />
@@ -384,6 +444,25 @@ function Dock({ facility, onFacility, onModule }: { facility: Facility; onFacili
         })}
       </div>
     </nav>
+  );
+}
+
+function FxToasts() {
+  const toasts = useFx((s) => s.toasts);
+  const dismiss = useFx((s) => s.dismiss);
+  return (
+    <div className="pointer-events-none fixed inset-x-0 top-[132px] z-[60] flex flex-col items-center gap-2 px-4">
+      {toasts.map((t) => (
+        <div key={t.id} className={clsx("animate-rise pointer-events-auto flex w-full max-w-sm items-start gap-3 rounded-2xl border px-4 py-3 shadow-2xl backdrop-blur-xl", t.tone === "error" ? "border-danger/40 bg-[#2a1210]/90" : "border-white/15 bg-night/90")}>
+          <span className={clsx("mt-1 h-2 w-2 shrink-0 rounded-full", t.tone === "error" ? "bg-danger" : t.tone === "warning" ? "bg-sunset" : "bg-sage")} />
+          <div className="min-w-0 flex-1">
+            <p className="text-[13px] font-semibold text-white">{t.title}</p>
+            {t.body && <p className="mt-0.5 text-[12px] text-white/70">{t.body}</p>}
+          </div>
+          <button onClick={() => dismiss(t.id)} className="text-white/50 hover:text-white" aria-label="Dismiss"><X size={14} /></button>
+        </div>
+      ))}
+    </div>
   );
 }
 

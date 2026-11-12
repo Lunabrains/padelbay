@@ -187,7 +187,7 @@ export function createSeed(now: number = Date.now()): DB {
             listPrice: q.listPrice,
             players,
             splitPayment: r() > 0.5,
-            createdAt: start - Math.floor(1 + r() * 6) * DAY,
+            createdAt: Math.min(start - Math.floor(1 + r() * 6) * DAY, now - Math.floor(2 + r() * 70) * HOUR),
             source: pick(["app", "app", "app", "desk", "concierge"] as const),
             payment: { method: pick(["Apple Pay", "Card", "Card", "Pay at venue"]), status: "paid", refunded: 0 },
           });

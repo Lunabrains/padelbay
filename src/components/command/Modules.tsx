@@ -12,12 +12,15 @@ import { SEGMENTS, cafeRevenue, courtRevenue, customerStats, mask, revenueByDay,
 import { useStore } from "@/lib/store";
 import type { Campaign, Task } from "@/lib/types";
 import { DAY, addDays, fmtAgo, fmtDate, fmtDayLabel, fmtHour, fmtTime, fmtWeekday, startOfDay } from "@/lib/time";
+import { Orders, Reservations } from "./Backoffice";
 import { Heatmap, HBars, SERIES, StackedBars } from "./charts";
 import { Restricted } from "./FacilityPanels";
 
-export type ModuleId = "crm" | "analytics" | "forecast" | "marketing" | "tasks" | "access" | "members" | "finance" | "team";
+export type ModuleId = "reservations" | "orders" | "crm" | "analytics" | "forecast" | "marketing" | "tasks" | "access" | "members" | "finance" | "team";
 
 export const MODULES: { id: ModuleId; label: string; perm: Permission }[] = [
+  { id: "reservations", label: "Reservations", perm: "courts:read" },
+  { id: "orders", label: "Orders", perm: "cafe:read" },
   { id: "crm", label: "CRM", perm: "crm:read" },
   { id: "analytics", label: "Analytics", perm: "analytics:read" },
   { id: "forecast", label: "AI forecast", perm: "analytics:read" },
@@ -38,7 +41,7 @@ export function ModuleWindow({ id, onClose }: { id: ModuleId; onClose: () => voi
       <div className="glass-dark animate-rise flex h-[86dvh] w-full max-w-5xl flex-col overflow-hidden rounded-[30px]" onClick={(e) => e.stopPropagation()}>
         <header className="flex items-center justify-between border-b border-white/10 px-6 py-4">
           <div>
-            <p className="label-caps text-sage">Command Center</p>
+            <p className="label-caps text-sage">Back office</p>
             <h2 className="font-display text-[28px] font-bold lowercase leading-none text-white">{mod.label}</h2>
           </div>
           <button onClick={onClose} className="flex h-10 w-10 items-center justify-center rounded-full bg-white/10 text-white hover:bg-white/20" aria-label="Close"><X size={17} /></button>
@@ -46,6 +49,10 @@ export function ModuleWindow({ id, onClose }: { id: ModuleId; onClose: () => voi
         <div className="thin-scrollbar flex-1 overflow-y-auto p-5 md:p-6">
           {!allowed ? (
             <Restricted perm={mod.perm} />
+          ) : id === "reservations" ? (
+            <Reservations />
+          ) : id === "orders" ? (
+            <Orders />
           ) : id === "crm" ? (
             <CRM />
           ) : id === "analytics" ? (

@@ -669,7 +669,7 @@ function Footer() {
           </div>
           <div className="flex flex-col gap-2">
             <Link href="/courts" className="flex h-12 items-center justify-center rounded-full bg-ink text-[14px] font-semibold text-white transition hover:bg-teal">Book your spot today</Link>
-            <Link href="/command" className="flex h-12 items-center justify-center rounded-full border border-ink/30 text-[13px] font-semibold transition hover:bg-ink/10">Staff Command Center</Link>
+            <Link href="/command" className="flex h-12 items-center justify-center rounded-full border border-ink/30 text-[13px] font-semibold transition hover:bg-ink/10">Staff back office</Link>
           </div>
         </div>
         <p className="relative mt-12 border-t border-ink/15 pt-5 text-[11.5px] leading-relaxed text-ink/60">

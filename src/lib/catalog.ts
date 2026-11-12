@@ -313,7 +313,7 @@ export const PERMISSIONS = [
 export type Permission = (typeof PERMISSIONS)[number];
 
 export const ROLE_LABEL: Record<StaffRole, string> = {
-  gm: "General Manager",
+  gm: "Owner · General Manager",
   frontdesk: "Front Desk",
   cafe: "Sip Café Lead",
   housekeeping: "Housekeeping",
