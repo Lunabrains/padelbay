@@ -5,7 +5,8 @@ import Link from "next/link";
 import { useState } from "react";
 import { Bell, LogOut, RotateCcw } from "lucide-react";
 import { POSES } from "@/components/three/rig";
-import { Avatar, Button, JoinCard, Label, PassCard, Tabs, ZonePanel, useZone } from "@/components/ui/kit";
+import { Avatar, Button, JoinCard, Label, Tabs, ZonePanel, useZone } from "@/components/ui/kit";
+import { CardAccess, MemberCard } from "./MemberCard";
 import { bookCourt, cancelBooking, markNoticesRead, refundFor, signOutCustomer, upcomingFor } from "@/lib/actions";
 import { skillLabel, tierFor } from "@/lib/catalog";
 import { useFx } from "@/lib/fx";
@@ -13,7 +14,7 @@ import { useCustomer, useNow } from "@/lib/hooks";
 import { useStore } from "@/lib/store";
 import { fmtAgo, fmtDayLabel, fmtRange } from "@/lib/time";
 
-type Tab = "passes" | "bookings" | "inbox";
+type Tab = "card" | "bookings" | "inbox";
 
 export default function Me() {
   useZone("overview", POSES.overview);
@@ -23,13 +24,14 @@ export default function Me() {
   const now = useNow(15_000);
   const toast = useFx((s) => s.toast);
   const celebrate = useFx((s) => s.celebrate);
-  const [tab, setTab] = useState<Tab>("passes");
+  const [tab, setTab] = useState<Tab>("card");
   const [confirmCancel, setConfirmCancel] = useState<string | null>(null);
 
   if (!customer) {
     return (
-      <ZonePanel kicker="Your Padel Bay" title="welcome.">
-        <JoinCard reason="to see your passes" />
+      <ZonePanel kicker="Padel Bay Club" title={<>get your<br />club card.</>}>
+        <p className="mb-3 text-[13px] leading-relaxed text-white/70">One card for everything: your loyalty level and points, the gate of every court you book, and your Bay Suite door after check-in.</p>
+        <JoinCard reason="and get your card" />
       </ZonePanel>
     );
   }
@@ -52,7 +54,7 @@ export default function Me() {
             if (t === "inbox") markNoticesRead("customer", customer.id);
           }}
           items={[
-            { id: "passes", label: "Passes", badge: passes.length },
+            { id: "card", label: "Club card", badge: passes.length },
             { id: "bookings", label: "Bookings", badge: upcoming.length },
             { id: "inbox", label: "Inbox", badge: unread },
           ]}
@@ -84,10 +86,10 @@ export default function Me() {
           <Link href="/club" className="rounded-full bg-white/10 px-3 py-1.5 text-[11.5px] font-semibold text-white hover:bg-white/20">Club</Link>
         </div>
 
-        {tab === "passes" && (
+        {tab === "card" && (
           <>
-            {passes.length === 0 && <p className="rounded-2xl bg-white/5 p-4 text-[13px] text-white/60">No active passes. Book a court and your gate pass appears here.</p>}
-            {passes.map((p) => <PassCard key={p.id} pass={p} />)}
+            <MemberCard customer={customer} />
+            <CardAccess customer={customer} />
           </>
         )}
 

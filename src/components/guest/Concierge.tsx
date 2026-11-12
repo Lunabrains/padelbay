@@ -373,7 +373,7 @@ export default function Concierge() {
       updateCard(msgId, idx, { state: "done", passId: res.value.passId });
       celebrate(res.reward);
       if (orderReward) setTimeout(() => celebrate(orderReward), 600);
-      setMsgs((m) => [...m, { id: Math.random().toString(36).slice(2), role: "bay", text: `Done. Your gate pass is in My Padel Bay${card.order ? " and Sip has your order" : ""}. See you on court!`, cards: [{ kind: "links", links: [{ href: "/me", label: "Open my pass" }, ...(card.order ? [{ href: "/cafe", label: "Track the order" }] : [])] }] }]);
+      setMsgs((m) => [...m, { id: Math.random().toString(36).slice(2), role: "bay", text: `Done. Your Padel Bay Club card now opens the ${getDB().courts.find((c) => c.id === card.booking.courtId)?.short} gate${card.order ? " and Sip has your order" : ""}. See you on court!`, cards: [{ kind: "links", links: [{ href: "/me", label: "Open my club card" }, ...(card.order ? [{ href: "/cafe", label: "Track the order" }] : [])] }] }]);
     }, 1100);
   };
 

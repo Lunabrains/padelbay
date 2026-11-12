@@ -334,7 +334,7 @@ export function joinWaitlist(customerId: string, courtId: string | null, start: 
 // Access
 // ---------------------------------------------------------------------------
 
-export function unlockDoor(passId: string, method: "QR" | "BLE" | "NFC"): Result<{ granted: boolean; reason?: string }> {
+export function unlockDoor(passId: string, method: "QR" | "BLE" | "NFC" | "Card"): Result<{ granted: boolean; reason?: string }> {
   const res = safeCommit<{ granted: boolean; reason?: string }>((db) => {
     const p = db.passes.find((x) => x.id === passId);
     if (!p) return { ok: false, error: "Pass not found" };
@@ -345,11 +345,38 @@ export function unlockDoor(passId: string, method: "QR" | "BLE" | "NFC"): Result
     db.accessLogs.unshift({ id: uid("al"), at: now, passId: p.id, holderId: p.holderId, door: p.door, method, result: granted ? "granted" : "denied", reason });
     const holder = db.customers.find((c) => c.id === p.holderId);
     audit(db, { type: "customer", id: p.holderId }, granted ? "access.granted" : "access.denied", "door", `${p.door} ${granted ? "opened" : "refused"} for ${holder?.name} via ${method}`, p.id);
-    notify(db, { kind: "access", title: `${p.door} ${granted ? "unlocked" : "refused"}`, body: `${holder?.name} · ${method} digital key${reason ? ` · ${reason}` : ""}`, severity: granted ? "info" : "warning", audience: "staff", ref: { kind: "pass", id: p.id } });
+    notify(db, { kind: "access", title: `${p.door} ${granted ? "unlocked" : "refused"}`, body: `${holder?.name} · ${method === "Card" ? "Padel Bay Club card" : `${method} digital key`}${reason ? ` · ${reason}` : ""}`, severity: granted ? "info" : "warning", audience: "staff", ref: { kind: "pass", id: p.id } });
     const reward = granted ? award(db, p.holderId, 0, ["key-holder"]) : undefined;
     return { ok: true, value: { granted, reason }, reward };
   });
   return res;
+}
+
+/** The club card opens any confirmed court booking: issue its door credential on first tap. */
+export function ensureCourtPass(bookingId: string): Result<string> {
+  const existing = getDB().bookings.find((b) => b.id === bookingId)?.passId;
+  if (existing) return { ok: true, value: existing };
+  return safeCommit((db) => {
+    const b = db.bookings.find((x) => x.id === bookingId);
+    if (!b || b.status !== "confirmed") return { ok: false, error: "Booking not found" };
+    const court = db.courts.find((c) => c.id === b.courtId)!;
+    const passId = uid("ps");
+    db.passes.unshift({
+      id: passId,
+      holderId: b.customerId,
+      kind: "court",
+      refId: b.id,
+      label: `${court.short} · ${fmtDate(b.start)} ${fmtRange(b.start, b.durationMin)}`,
+      door: `${court.short} gate`,
+      code: code(),
+      validFrom: b.start - 15 * MIN,
+      validTo: b.start + b.durationMin * MIN,
+      status: "active",
+      issuedAt: Date.now(),
+    });
+    b.passId = passId;
+    return { ok: true, value: passId };
+  });
 }
 
 export function revokePass(passId: string, staffId: string): Result<true> {

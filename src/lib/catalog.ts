@@ -84,6 +84,44 @@ export function nextTier(lifetime: number): Tier | null {
 }
 
 export const WELCOME_POINTS = 150;
+export const REFERRAL_POINTS = 100;
+
+export interface RewardDef {
+  id: string;
+  name: string;
+  description: string;
+  points: number;
+  minTier?: TierId;
+  where: "Sip" | "Front desk" | "Courts" | "Bay Suites";
+  emoji: string;
+}
+
+export const REWARDS: RewardDef[] = [
+  { id: "rw-cortado", name: "Free cortado", description: "Any day, any time at Sip", points: 120, where: "Sip", emoji: "☕" },
+  { id: "rw-rental", name: "Racket & balls rental", description: "One session's kit, on us", points: 180, where: "Front desk", emoji: "🎾" },
+  { id: "rw-smoothie", name: "Smoothie of your choice", description: "Cold-pressed, any size", points: 220, where: "Sip", emoji: "🥭" },
+  { id: "rw-grip", name: "Padel Bay grip pack", description: "Three overgrips in club colours", points: 260, where: "Front desk", emoji: "🧢" },
+  { id: "rw-extension", name: "30 min court extension", description: "Add half an hour to any off-peak booking", points: 300, where: "Courts", emoji: "⏱️" },
+  { id: "rw-guest", name: "Guest pass", description: "Bring a friend to one session free", points: 450, minTier: "challenger", where: "Front desk", emoji: "🎟️" },
+  { id: "rw-tumbler", name: "Sip tumbler", description: "Insulated, refills 10% off forever", points: 600, minTier: "challenger", where: "Sip", emoji: "🥤" },
+  { id: "rw-clinic", name: "Private sunset clinic", description: "60 min with a coach for you and three friends", points: 2400, minTier: "elite", where: "Courts", emoji: "🌅" },
+  { id: "rw-night", name: "A night at Bay Suites", description: "Sea Pod, sunset deck, breakfast for two (when open)", points: 5000, minTier: "legend", where: "Bay Suites", emoji: "🌊" },
+];
+
+/** Stable, human-friendly member number from an id. */
+export function memberNumber(id: string) {
+  let h = 0;
+  for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) >>> 0;
+  return `PB-${String(10000 + (h % 90000))}`;
+}
+
+export function referralCode(name: string, id: string) {
+  return `${name.split(" ")[0].toUpperCase().replace(/[^A-Z]/g, "").slice(0, 6)}${memberNumber(id).slice(-3)}`;
+}
+
+export function tierRank(t: TierId) {
+  return ["rookie", "challenger", "elite", "legend"].indexOf(t);
+}
 export const POINTS_PER_DOLLAR = { courts: 1, cafe: 2, stays: 1 } as const;
 
 export interface AchievementDef {

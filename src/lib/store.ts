@@ -49,6 +49,8 @@ export const useStore = create<State>()(
       skipHydration: true,
       onRehydrateStorage: () => (state) => {
         if (!state) return;
+        // data saved by an earlier version of the demo: add what is missing
+        if (!state.db.redemptions) useStore.setState({ db: { ...state.db, redemptions: [] } });
         const today = startOfDay();
         if (state.db.seededDay !== today) {
           useStore.setState({ db: shiftDB(state.db, today - state.db.seededDay) });

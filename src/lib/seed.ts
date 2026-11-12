@@ -213,13 +213,30 @@ export function createSeed(now: number = Date.now()): DB {
     list.push(b);
     byCustomer.set(b.customerId, list);
   }
+  // A believable loyalty pyramid, ranked by real activity: ~8% Legend, ~20% Elite,
+  // ~32% Challenger, ~40% Rookie.
+  const activity = customers
+    .map((c) => ({ c, n: (byCustomer.get(c.id) ?? []).filter((b) => b.start < now).length + r() * 3 - (lapsed.has(c.id) ? 4 : 0) }))
+    .sort((a, b) => b.n - a.n);
+  const cuts = [0, 0.08, 0.28, 0.6, 1].map((p) => Math.round(p * activity.length));
+  const ranges = [[3000, 5600], [1200, 2950], [300, 1180], [150, 295]];
+  const band = (rank: number) => {
+    const i = cuts.findIndex((c, k) => rank >= c && rank < cuts[k + 1]);
+    const size = Math.max(1, cuts[i + 1] - cuts[i]);
+    return { lo: ranges[i][0], hi: ranges[i][1], t: (rank - cuts[i]) / size };
+  };
+  const badgePool = ["sip-and-play", "key-holder", "squad-up", "early-bird", "night-owl", "open-court", "ask-the-bay", "regular", "bracket-ready"];
+  activity.forEach(({ c }, rank) => {
+    const { lo, hi, t } = band(rank);
+    c.loyalty.lifetime = Math.max(lo, Math.round(hi - (hi - lo) * t - r() * 25));
+    c.loyalty.points = Math.round(c.loyalty.lifetime * (0.35 + r() * 0.35));
+    const badges = lo >= 3000 ? 7 : lo >= 1200 ? 5 : lo >= 300 ? 3 : 1;
+    c.achievements = [{ id: "first-serve", at: c.createdAt + 2 * DAY }, ...badgePool.slice(0, badges - 1).map((id, i) => ({ id, at: c.createdAt + (5 + i * 9) * DAY }))].filter((a) => a.at < now);
+    c.enrolledAt = c.createdAt;
+  });
   for (const c of customers) {
     const list = byCustomer.get(c.id) ?? [];
     const past = list.filter((b) => b.start < now);
-    const spend = list.reduce((s, b) => s + b.price, 0);
-    const bonus = Math.floor(r() * 2600);
-    c.loyalty.lifetime = WELCOME_POINTS + Math.round(spend * 1.4) + bonus;
-    c.loyalty.points = Math.round(c.loyalty.lifetime * (0.3 + r() * 0.4));
     c.lastVisitAt = past.length ? Math.max(...past.map((b) => b.start)) : c.createdAt;
     if (lapsed.has(c.id)) c.lastVisitAt = Math.min(c.lastVisitAt, today - (24 + Math.floor(r() * 40)) * DAY);
     c.tags = [
@@ -400,6 +417,11 @@ export function createSeed(now: number = Date.now()): DB {
       { id: "pr-seabreeze", label: "Sea Breeze afternoon", courtIds: ["c3", "c4"], days: [1, 2, 3, 4, 5], fromHour: 13, toHour: 16, discount: 0.2, createdBy: "ai", active: true, createdAt: today - 12 * DAY, until: today + 18 * DAY },
     ],
     notices,
+    redemptions: activity.slice(0, 6).flatMap(({ c }, i) => {
+      const picks = [["rw-cortado", "Free cortado", 120], ["rw-rental", "Racket & balls rental", 180], ["rw-guest", "Guest pass", 450]] as const;
+      const [rewardId, name, points] = picks[i % picks.length];
+      return [{ id: id("rd"), customerId: c.id, rewardId, name, points, code: `RW${(4810 + i * 137).toString(36).toUpperCase()}`, at: now - (i + 1) * 9 * HOUR, status: i % 2 ? ("used" as const) : ("issued" as const), usedAt: i % 2 ? now - i * 3 * HOUR : undefined }];
+    }),
     audit: [
       { id: id("au"), at: now - 5 * HOUR, actor: { type: "ai" }, action: "churn.scan", entity: "customer", summary: "Churn-risk scan flagged 12 members" },
       { id: id("au"), at: now - 3 * HOUR, actor: { type: "staff", id: "s-desk" }, action: "maintenance.schedule", entity: "court", entityId: "c4", summary: "Maintenance block set on Court 4 for tomorrow 07:00" },
@@ -414,6 +436,7 @@ export function createSeed(now: number = Date.now()): DB {
 const TIME_KEYS = new Set([
   "at", "start", "createdAt", "lastVisitAt", "validFrom", "validTo", "issuedAt", "checkIn", "checkOut", "due", "until", "sentAt",
   "lastRunAt", "cancelledAt", "checkedInAt", "checkedOutAt", "expiresAt", "offeredAt", "completedAt", "lastServicedAt", "generatedAt",
+  "enrolledAt", "usedAt",
 ]);
 
 export function shiftDB(db: DB, delta: number): DB {

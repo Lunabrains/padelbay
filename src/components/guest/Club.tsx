@@ -9,10 +9,78 @@ import { ACHIEVEMENTS, CHALLENGES, SEASON, TIERS, nextTier, skillLabel, tierFor 
 import { useCustomer, useNow } from "@/lib/hooks";
 import { onPick } from "@/lib/stage";
 import { useStore } from "@/lib/store";
-import type { TierId } from "@/lib/types";
+import type { Customer, TierId } from "@/lib/types";
 import { DAY, MIN, fmtDate, startOfDay } from "@/lib/time";
 
-type Tab = "levels" | "achievements" | "season";
+type Tab = "levels" | "leaderboard" | "achievements" | "season";
+
+function shortName(name: string) {
+  const [first, ...rest] = name.split(" ");
+  return rest.length ? `${first} ${rest[rest.length - 1][0]}.` : first;
+}
+
+export function LoyaltyLeaderboard({ me, limit = 15 }: { me?: Customer; limit?: number }) {
+  const db = useStore((s) => s.db);
+  const now = useNow(60_000);
+  const [mode, setMode] = useState<"all" | "month">("all");
+  const rows = useMemo(() => {
+    const since = now - 30 * DAY;
+    return db.customers
+      .filter((c) => !c.hideFromLeaderboard)
+      .map((c) => {
+        let pts = c.loyalty.lifetime;
+        if (mode === "month") {
+          const courts = db.bookings.filter((b) => b.customerId === c.id && b.status === "confirmed" && b.kind !== "maintenance" && b.createdAt >= since).reduce((s, b) => s + b.price, 0);
+          const sip = db.orders.filter((o) => o.customerId === c.id && o.createdAt >= since).reduce((s, o) => s + o.total, 0);
+          const ach = c.achievements.filter((a) => a.at >= since).reduce((s, a) => s + (ACHIEVEMENTS.find((x) => x.id === a.id)?.points ?? 0), 0);
+          // never more than the member has earned in total
+          pts = Math.min(c.loyalty.lifetime, Math.round(courts + sip * 2 + ach));
+        }
+        return { c, pts, tier: tierFor(c.loyalty.lifetime) };
+      })
+      .sort((a, b) => b.pts - a.pts);
+  }, [db, mode, now]);
+  const myIdx = me ? rows.findIndex((r) => r.c.id === me.id) : -1;
+  const Row = ({ r, i }: { r: (typeof rows)[number]; i: number }) => {
+    const mine = me && r.c.id === me.id;
+    return (
+      <div className={clsx("flex items-center gap-3 rounded-2xl px-3 py-2", mine ? "bg-sage/20 ring-1 ring-sage/50" : i < 3 ? "bg-white/8" : "bg-white/[0.03]")}>
+        <span className={clsx("w-6 text-center text-[13px] font-bold tabular", i === 0 ? "text-gold" : i < 3 ? "text-sage" : "text-white/45")}>
+          {i === 0 ? <Icons.Crown size={15} className="mx-auto" /> : i + 1}
+        </span>
+        <span className="h-7 w-7 shrink-0 rounded-full shadow-[inset_0_-4px_8px_rgba(0,0,0,0.3)]" style={{ background: r.tier.color }} title={`${r.tier.name} · ${r.tier.character}`} />
+        <span className="min-w-0 flex-1">
+          <span className="block truncate text-[13px] font-medium text-white">{mine ? `${r.c.name} (you)` : shortName(r.c.name)}</span>
+          <span className="block text-[10.5px] text-white/50">{r.tier.name} · {r.tier.character}</span>
+        </span>
+        <span className="text-right">
+          <span className="block text-[13px] font-semibold tabular text-white">{r.pts.toLocaleString()}</span>
+          <span className="block text-[9.5px] uppercase tracking-wider text-white/40">pts</span>
+        </span>
+      </div>
+    );
+  };
+  return (
+    <div className="space-y-2">
+      <div className="flex rounded-full bg-white/8 p-1">
+        {(["all", "month"] as const).map((m) => (
+          <button key={m} onClick={() => setMode(m)} className={clsx("flex-1 rounded-full py-2 text-[12.5px] font-semibold transition", mode === m ? "bg-white text-ink" : "text-white/75")}>
+            {m === "all" ? "All-time" : "This month"}
+          </button>
+        ))}
+      </div>
+      <p className="text-[10.5px] text-white/45">{mode === "all" ? "Ranked by lifetime club points" : "Points earned in the last 30 days: courts ×1, Sip ×2, plus achievements"} · loyalty only, not skill</p>
+      {rows.slice(0, limit).map((r, i) => <Row key={r.c.id} r={r} i={i} />)}
+      {myIdx >= limit && (
+        <>
+          <p className="py-0.5 text-center text-[11px] text-white/35">···</p>
+          <Row r={rows[myIdx]} i={myIdx} />
+        </>
+      )}
+      <p className="pt-1 text-[10.5px] text-white/40">Members can hide from the leaderboard any time. Names are shortened for privacy.</p>
+    </div>
+  );
+}
 
 export default function Club() {
   const db = useStore((s) => s.db);
@@ -64,6 +132,7 @@ export default function Club() {
           onChange={setTab}
           items={[
             { id: "levels", label: "Levels" },
+            { id: "leaderboard", label: "Leaderboard" },
             { id: "achievements", label: "Achievements", badge: customer?.achievements.length },
             { id: "season", label: `Season ${SEASON.code}` },
           ]}
@@ -163,6 +232,8 @@ export default function Club() {
             </div>
           </>
         )}
+
+        {tab === "leaderboard" && <LoyaltyLeaderboard me={customer} />}
 
         {tab === "achievements" && (
           <div className="grid grid-cols-2 gap-2">

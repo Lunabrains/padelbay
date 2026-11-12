@@ -457,7 +457,7 @@ function Access() {
               <span className="w-20 tabular text-white/55">{fmtDayLabel(l.at, now) === "Today" ? fmtTime(l.at) : `${fmtDate(l.at).slice(4)} ${fmtTime(l.at)}`}</span>
               <span className="flex-1 text-white">{l.door}</span>
               <span className="text-white/60">{db.customers.find((c) => c.id === l.holderId)?.name ?? "Unknown pass"}</span>
-              <span className="w-12 text-white/45">{l.method}</span>
+              <span className="w-24 text-white/45">{l.method === "Card" ? "Member card" : l.method}</span>
               <span className={clsx("w-28 text-right", l.result === "granted" ? "text-sage" : "text-danger")}>{l.result}{l.reason ? ` · ${l.reason}` : ""}</span>
             </div>
           ))}

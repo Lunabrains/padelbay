@@ -5,7 +5,8 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { BedDouble, Check, Minus, Plus, ScanFace, Sparkles, Star, Users } from "lucide-react";
 import { POSES } from "@/components/three/rig";
-import { Button, Field, JoinCard, Label, PassCard, SimBadge, Tabs, Toggle, ZonePanel, useZone } from "@/components/ui/kit";
+import { Button, Field, JoinCard, Label, SimBadge, Tabs, Toggle, ZonePanel, useZone } from "@/components/ui/kit";
+import { CardAccess, MemberCard } from "./MemberCard";
 import { bookStay, checkInStay, checkOutStay, registerGuests, unitAvailable } from "@/lib/actions";
 import { stayPackageFor } from "@/lib/ai";
 import { useFx } from "@/lib/fx";
@@ -206,6 +207,17 @@ export default function Stay() {
   );
 }
 
+function MemberCardFor({ customerId }: { customerId: string }) {
+  const c = useStore((s) => s.db.customers.find((x) => x.id === customerId));
+  if (!c) return null;
+  return (
+    <>
+      <MemberCard customer={c} compact />
+      <CardAccess customer={c} />
+    </>
+  );
+}
+
 function Stepper({ label, value, min, max, onChange }: { label: string; value: number; min: number; max: number; onChange: (v: number) => void }) {
   return (
     <div className="flex items-center justify-between rounded-2xl bg-white/6 px-3 py-2.5">
@@ -340,7 +352,14 @@ function MyStay({ stay, now }: { stay?: StayT; now: number }) {
         </div>
       )}
 
-      {pass && pass.status === "active" && <PassCard pass={pass} />}
+      {pass && pass.status === "active" && (
+        <div className="space-y-3">
+          <p className="flex items-center gap-2 rounded-2xl bg-white/6 px-3.5 py-2.5 text-[12.5px] text-white/80">
+            <span className="h-2 w-2 rounded-full bg-sage" /> Your Padel Bay Club card is now the key to <span className="font-semibold text-white">{unit.name}</span>.
+          </p>
+          <MemberCardFor customerId={stay.customerId} />
+        </div>
+      )}
 
       {stay.status === "checked-in" && (
         <>

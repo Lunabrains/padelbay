@@ -30,6 +30,21 @@ export interface Customer {
   notes?: string;
   isDemoGuest?: boolean;
   credit: number; // club credit in USD
+  enrolledAt?: number; // joined the Padel Bay Club loyalty program
+  hideFromLeaderboard?: boolean;
+  referredBy?: ID;
+}
+
+export interface Redemption {
+  id: ID;
+  customerId: ID;
+  rewardId: string;
+  name: string;
+  points: number;
+  code: string;
+  at: number;
+  status: "issued" | "used";
+  usedAt?: number;
 }
 
 export type CourtType = "indoor" | "outdoor";
@@ -118,7 +133,7 @@ export interface AccessLog {
   passId: ID | null;
   holderId: ID | null;
   door: string;
-  method: "QR" | "BLE" | "NFC" | "desk";
+  method: "QR" | "BLE" | "NFC" | "desk" | "Card";
   result: "granted" | "denied";
   reason?: string;
 }
@@ -387,5 +402,6 @@ export interface DB {
   promos: Promo[];
   notices: Notice[];
   audit: AuditEntry[];
+  redemptions: Redemption[];
   settings: { aiPricing: boolean };
 }

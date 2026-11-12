@@ -6,7 +6,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Apple, Check, Clock, CreditCard, Minus, Plus, Repeat, Share2, Sparkles, Sun, UserPlus, Users, Wallet, X } from "lucide-react";
 import { POSES } from "@/components/three/rig";
 import { courtLive } from "@/components/three/Stage";
-import { Avatar, Button, Field, JoinCard, Label, PassCard, Segmented, SimBadge, Toggle, ZonePanel, useZone } from "@/components/ui/kit";
+import { Avatar, Button, Field, JoinCard, Label, Segmented, SimBadge, Toggle, ZonePanel, useZone } from "@/components/ui/kit";
+import { CardAccess, MemberCard } from "./MemberCard";
 import { bookCourt, holdSlot, joinWaitlist, refundFor, releaseHold, slotConflict } from "@/lib/actions";
 import { matchmaking, recommendSlots } from "@/lib/ai";
 import { CANCELLATION, DURATIONS, skillLabel, tierFor } from "@/lib/catalog";
@@ -151,7 +152,15 @@ export default function CourtsBooking() {
               <p className="text-white/65">Paid ${total.toFixed(2)} with {method}{split && players.length ? ` · players owe $${share.toFixed(2)} each` : ""}</p>
             </div>
           </div>
-          {pass && <PassCard pass={pass} />}
+          {pass && customer && (
+            <div className="space-y-3">
+              <p className="flex items-center gap-2 rounded-2xl bg-white/6 px-3.5 py-2.5 text-[12.5px] text-white/80">
+                <span className="h-2 w-2 rounded-full bg-sage" /> Your Padel Bay Club card now opens the <span className="font-semibold text-white">{pass.door}</span>, from {fmtTime(pass.validFrom)}.
+              </p>
+              <MemberCard customer={customer} compact />
+              <CardAccess customer={customer} />
+            </div>
+          )}
           <Link href={`/cafe?deliver=${result.bookingId}`} className="group flex items-center justify-between rounded-[24px] bg-gradient-to-r from-timber to-sunset p-4 text-white transition hover:brightness-110">
             <span>
               <span className="block text-[15px] font-semibold">Order Sip to {court.short}</span>
@@ -177,7 +186,7 @@ export default function CourtsBooking() {
               <Share2 size={15} /> Share
             </Button>
             <Link href="/me" className="flex h-11 items-center justify-center rounded-full border border-white/20 bg-white/5 text-[13px] font-semibold text-white transition hover:bg-white/12">
-              My passes
+              My club card
             </Link>
           </div>
           <Button variant="ghost" className="w-full text-[13px]" onClick={() => { setStep("pick"); setStart(null); setResult(null); setPlayers([]); setWeeks(1); }}>
