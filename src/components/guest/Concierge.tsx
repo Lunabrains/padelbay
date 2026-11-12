@@ -6,8 +6,8 @@ import { useEffect, useRef, useState } from "react";
 import { ArrowUp, Check, Loader2, Sparkles, X } from "lucide-react";
 import { JoinCard, SimBadge } from "@/components/ui/kit";
 import { bookCourt, placeOrder, recordConcierge, upcomingFor } from "@/lib/actions";
-import { matchmaking, recommendSlots, stayPackageFor } from "@/lib/ai";
-import { CANCELLATION, TIERS, VENUE, nextTier, tierFor } from "@/lib/catalog";
+import { matchmaking, recommendSlots } from "@/lib/ai";
+import { CANCELLATION, KEY_WINDOW_MIN, TIERS, VENUE, nextTier, tierFor } from "@/lib/catalog";
 import { slotStatus } from "@/lib/engine/availability";
 import { quote } from "@/lib/engine/pricing";
 import { useFx } from "@/lib/fx";
@@ -39,7 +39,6 @@ type Card =
   | { kind: "order"; order: PreparedOrder; deliver: { kind: "court" | "pickup"; refId?: string; label: string }; state: "pending" | "done" | "cancelled" }
   | { kind: "slots"; options: { courtId: string; start: number; durationMin: number; price: number; reason?: string }[] }
   | { kind: "tier" }
-  | { kind: "package"; id: string; reason: string }
   | { kind: "matches" }
   | { kind: "join" }
   | { kind: "links"; links: { href: string; label: string }[] };
@@ -247,10 +246,19 @@ function respond(input: string, ctx: { db: DB; customer?: Customer; now: number;
     return { text: text2, cards: [{ kind: "tier" }, { kind: "links", links: [{ href: "/club", label: "Open the Club" }] }] };
   }
 
-  if (/\b(stay|suite|pod|villa|loft|night|sleep|hotel|package|weekend away)\b/.test(text)) {
-    const rec = stayPackageFor(db, customer);
-    steps.push("Matching your play pattern to a stay");
-    return { text: `Bay Suites are a planned addition, so this is a preview. My pick: ${rec.pkg.name}. ${rec.reason}.`, steps, cards: [{ kind: "package", id: rec.pkg.id, reason: rec.reason }] };
+  if (/\b(locker|lockers|racket|rackets|raquette|balls?|kit|key|keys)\b/.test(text)) {
+    const next = customer ? upcomingFor(db, customer.id, now)[0] : undefined;
+    if (next) {
+      const court = db.courts.find((c) => c.id === next.courtId);
+      const locker = db.lockers.find((l) => l.id === next.lockerId);
+      const from = next.start - KEY_WINDOW_MIN * 60_000;
+      const to = next.start + (next.durationMin + KEY_WINDOW_MIN) * 60_000;
+      return {
+        text: `Your next session is ${court?.short} ${fmtDayLabel(next.start, now).toLowerCase()} ${fmtRange(next.start, next.durationMin)}. ${locker ? `Locker ${locker.number} has your rackets and balls.` : "A kit locker is assigned when your key activates."} The digital key on your club card opens it from ${fmtTime(from)} until ${fmtTime(to)}: 10 minutes before and 10 minutes after.`,
+        cards: [{ kind: "links", links: [{ href: "/me", label: "Open my club card" }] }],
+      };
+    }
+    return { text: "Every paid booking comes with a kit locker: rackets for each player and a fresh tube of balls. Your digital key on the club card opens it 10 minutes before you play and expires 10 minutes after.", cards: [{ kind: "links", links: [{ href: "/courts", label: "Book a court" }] }] };
   }
 
   if (/\b(partner|opponent|match(es)?|tournament|americano|who can i play|players?|find (me )?(a )?(game|four))\b/.test(text)) {
@@ -274,9 +282,9 @@ function respond(input: string, ctx: { db: DB; customer?: Customer; now: number;
     return { text: `${first ? `${first}, h` : "H"}ere's my plan: a ${recs[0] ? `${fmtTime(recs[0].start)} session (${recs[0].reason.toLowerCase()})` : "sunset session"}, then refuel at Sip. Double points on every Sip order this week.`, steps, cards: [{ kind: "slots", options: recs }] };
   }
 
-  if (/^(hi|hey|hello|salut|marhaba|ahla|bonjour)\b/.test(text)) return { text: `Ahla${first ? ` ${first}` : ""}! I can book courts, send Sip to your court, plan a stay or find you a four. What's the plan?` };
+  if (/^(hi|hey|hello|salut|marhaba|ahla|bonjour)\b/.test(text)) return { text: `Ahla${first ? ` ${first}` : ""}! I can book courts, send Sip to your court, explain your locker key or find you a four. What's the plan?` };
 
-  return { text: "I can help with courts, Sip orders, Bay Suites, the Club and finding players. Try “court for 4 tomorrow at 8pm”, “two flat whites to my court” or “what do I get at Elite?”." };
+  return { text: "I can help with courts, Sip orders, your kit locker key, the Club and finding players. Try “court for 4 tomorrow at 8pm”, “two flat whites to my court” or “what do I get at Elite?”." };
 }
 
 function alternatives(db: DB, customer: Customer | undefined, around: number, dur: number, now: number) {
@@ -298,7 +306,7 @@ function alternatives(db: DB, customer: Customer | undefined, around: number, du
   return out;
 }
 
-const SUGGESTIONS = ["Court for 4 tomorrow at 8pm + 2 flat whites", "What's free tonight?", "What do I get at Elite?", "Plan me a stay & play weekend", "Find me a partner at my level"];
+const SUGGESTIONS = ["Court for 4 tomorrow at 8pm + 2 flat whites", "What's free tonight?", "What do I get at Elite?", "How does my locker key work?", "Find me a partner at my level"];
 
 export default function Concierge() {
   const open = useFx((s) => s.conciergeOpen);
@@ -412,7 +420,7 @@ export default function Concierge() {
           {msgs.length === 0 && (
             <div className="space-y-3">
               <div className="w-fit max-w-[90%] rounded-[20px] rounded-bl-md bg-white/10 px-4 py-3 text-[13.5px] text-white/90">
-                Ahla{customer ? ` ${customer.name.split(" ")[0]}` : ""}! I&apos;m the Padel Bay concierge. I check live courts, Sip and Bay Suites, prepare everything, and only book when you say yes.
+                Ahla{customer ? ` ${customer.name.split(" ")[0]}` : ""}! I&apos;m the Padel Bay concierge. I check live courts, Sip and your kit locker, prepare everything, and only book when you say yes.
               </div>
               <div className="flex flex-wrap gap-1.5">
                 {SUGGESTIONS.map((s) => (
@@ -525,16 +533,6 @@ function CardView({
           </div>
         ))}
       </div>
-    );
-  }
-  if (card.kind === "package") {
-    const p = db.packages.find((x) => x.id === card.id)!;
-    return (
-      <Link href={`/stay?package=${p.id}`} className="block w-full rounded-[22px] bg-gradient-to-br from-sunset/80 to-ember/70 p-3.5 text-white">
-        <span className="block font-display text-[19px] font-bold lowercase leading-none">{p.name}</span>
-        <span className="mt-1 block text-[11.5px] text-white/85">{p.perks.join(" · ")}</span>
-        <span className="mt-1.5 block text-[14px] font-semibold tabular">${p.price} · see the suites →</span>
-      </Link>
     );
   }
   if (card.kind === "matches") {

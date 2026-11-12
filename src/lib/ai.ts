@@ -1,7 +1,7 @@
 import { TIERS, tierFor } from "./catalog";
 import { nextFreeSlots, slotStatus, utilization } from "./engine/availability";
 import { quote } from "./engine/pricing";
-import type { Customer, DB, StayPackage, Tournament } from "./types";
+import type { Customer, DB, Tournament } from "./types";
 import { DAY, HOUR, MIN, addDays, atHour, fmtDate, fmtHour, fmtTime, fmtWeekday, startOfDay } from "./time";
 
 // Simulated AI. Every output here is deterministic demo logic over the shared data and is
@@ -168,16 +168,6 @@ export function briefing(db: DB, now: number) {
     delta,
     items,
   };
-}
-
-export function stayPackageFor(db: DB, c: Customer | undefined | null): { pkg: StayPackage; reason: string } {
-  const pk = (id: string) => db.packages.find((p) => p.id === id)!;
-  if (!c) return { pkg: pk("pk-weekend"), reason: "Most loved by first-time guests" };
-  const tier = tierFor(c.loyalty.lifetime);
-  if (c.skill.rating < 2.5) return { pkg: pk("pk-camp"), reason: `You're rated ${c.skill.rating.toFixed(1)}: three coached sessions is the fastest way up` };
-  if ((c.preferredHour ?? 19) <= 8) return { pkg: pk("pk-sunrise"), reason: "You love early sessions: wake up and walk to Court 1" };
-  if (tier.id === "elite" || tier.id === "legend") return { pkg: pk("pk-villa"), reason: `${tier.name} perk: bring your four, villa plus tournament entry` };
-  return { pkg: pk("pk-weekend"), reason: "Your weekend pattern fits two nights and three court hours" };
 }
 
 export function tournamentPlan(db: DB, t: Tournament, now: number) {

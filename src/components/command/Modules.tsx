@@ -8,7 +8,7 @@ import { revokePass, staffAction } from "@/lib/actions";
 import { churnRisk, forecast, tierDistribution } from "@/lib/ai";
 import { PERMISSIONS, ROLE_LABEL, ROLE_PERMISSIONS, TIERS, can, skillLabel, type Permission } from "@/lib/catalog";
 import { useNow, useStaff } from "@/lib/hooks";
-import { SEGMENTS, cafeRevenue, courtRevenue, customerStats, mask, revenueByDay, segmentMembers, stayRevenue } from "@/lib/ops";
+import { SEGMENTS, cafeRevenue, courtRevenue, customerStats, mask, revenueByDay, segmentMembers } from "@/lib/ops";
 import { useStore } from "@/lib/store";
 import type { Campaign, Task } from "@/lib/types";
 import { DAY, addDays, fmtAgo, fmtDate, fmtDayLabel, fmtHour, fmtTime, fmtWeekday, startOfDay } from "@/lib/time";
@@ -116,7 +116,6 @@ function CRM() {
     ? [
         ...db.bookings.filter((b) => b.customerId === picked.id).map((b) => ({ at: b.createdAt, text: `${b.status === "cancelled" ? "Cancelled" : "Booked"} ${db.courts.find((c) => c.id === b.courtId)?.short} · ${fmtDate(b.start)} ${fmtTime(b.start)} · $${b.price.toFixed(0)}${b.source === "concierge" ? " · via AI concierge" : ""}` })),
         ...db.orders.filter((o) => o.customerId === picked.id).map((o) => ({ at: o.createdAt, text: `Sip #${o.number} · ${o.lines.map((l) => l.name).join(", ")} → ${o.deliverTo.label}` })),
-        ...db.stays.filter((s) => s.customerId === picked.id).map((s) => ({ at: s.createdAt, text: `Stay · ${db.units.find((u) => u.id === s.unitId)?.name} · ${s.status}` })),
         ...picked.achievements.map((a) => ({ at: a.at, text: `Achievement · ${a.id.replace(/-/g, " ")}` })),
       ].sort((a, b) => b.at - a.at).slice(0, 14)
     : [];
@@ -161,7 +160,7 @@ function CRM() {
               </div>
             </div>
             <div className="mt-3 grid grid-cols-4 gap-1.5 text-center">
-              {[[ps.sessions, "sessions"], [ps.orders, "Sip orders"], [ps.stays, "stays"], [`$${Math.round(ps.spend)}`, "lifetime"]].map(([v, l]) => (
+              {[[ps.sessions, "sessions"], [ps.orders, "Sip orders"], [db.accessLogs.filter((l) => l.holderId === picked.id && l.door.startsWith("Locker")).length, "locker opens"], [`$${Math.round(ps.spend)}`, "lifetime"]].map(([v, l]) => (
                 <div key={l as string} className="rounded-xl bg-white/5 py-2"><p className="text-[14px] font-bold tabular text-white">{v}</p><p className="text-[9px] uppercase tracking-wider text-white/45">{l}</p></div>
               ))}
             </div>
@@ -190,7 +189,7 @@ function CRM() {
             </div>
           </Card>
         ) : (
-          <Card><p className="text-[12.5px] text-white/55">Select a member to see their unified profile: courts, Sip, stays, loyalty, churn risk.</p></Card>
+          <Card><p className="text-[12.5px] text-white/55">Select a member to see their unified profile: courts, Sip, locker keys, loyalty, churn risk.</p></Card>
         )}
       </div>
     </div>
@@ -212,11 +211,11 @@ function Analytics() {
     }),
   }));
   const sources = ["app", "concierge", "desk", "waitlist"].map((s) => ({ label: s === "app" ? "App" : s === "concierge" ? "AI concierge" : s === "desk" ? "Front desk" : "Waitlist", value: db.bookings.filter((b) => b.source === s && b.createdAt > now - 14 * DAY).length }));
-  const total14 = days.reduce((s, d) => s + d.values.courts + d.values.cafe + d.values.stays, 0);
+  const total14 = days.reduce((s, d) => s + d.values.courts + d.values.cafe, 0);
   return (
     <div className="grid gap-4 lg:grid-cols-2">
       <Card title="Revenue · last 14 days" right={<span className="text-[13px] font-semibold tabular text-white">${Math.round(total14).toLocaleString()}</span>} className="lg:col-span-2">
-        <StackedBars data={days.map((d) => ({ label: d.label, values: d.values }))} series={[SERIES.courts, SERIES.cafe, SERIES.stays]} height={170} />
+        <StackedBars data={days.map((d) => ({ label: d.label, values: d.values }))} series={[SERIES.courts, SERIES.cafe]} height={170} />
       </Card>
       <Card title="Court occupancy by hour · last 7 days">
         <Heatmap rows={heat} cols={Array.from({ length: 17 }, (_, i) => fmtHour(7 + i).slice(0, 2))} />
@@ -390,7 +389,7 @@ function Tasks() {
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center gap-2">
-        {(["all", "courts", "cafe", "suites", "front", "marketing"] as const).map((a) => (
+        {(["all", "courts", "cafe", "lockers", "front", "marketing"] as const).map((a) => (
           <button key={a} onClick={() => setArea(a)} className={clsx("rounded-full px-3 py-1.5 text-[11.5px] capitalize", area === a ? "bg-white text-ink" : "bg-white/8 text-white/75")}>{a}</button>
         ))}
         <div className="ml-auto flex items-center gap-2">
@@ -553,7 +552,6 @@ function Finance() {
   const streams = [
     { label: "Courts", value: courtRevenue(db, from, today + DAY) },
     { label: "Sip café", value: cafeRevenue(db, from, today + DAY) },
-    { label: "Bay Suites (simulated)", value: stayRevenue(db, from, today + DAY) },
   ];
   const refunds = db.bookings.filter((b) => b.cancelledAt && b.cancelledAt > from).reduce((s, b) => s + b.payment.refunded, 0);
   const methods = new Map<string, number>();
@@ -573,7 +571,7 @@ function Finance() {
   return (
     <div className="grid gap-4 lg:grid-cols-[1.6fr_1fr]">
       <Card title="Revenue · last 30 days" right={<button onClick={exportCsv} className="flex items-center gap-1.5 rounded-full bg-white/10 px-3 py-1.5 text-[11.5px] text-white hover:bg-white/20"><Download size={13} /> Export CSV</button>}>
-        <StackedBars data={days.map((d) => ({ label: d.label, values: d.values }))} series={[SERIES.courts, SERIES.cafe, SERIES.stays]} height={180} />
+        <StackedBars data={days.map((d) => ({ label: d.label, values: d.values }))} series={[SERIES.courts, SERIES.cafe]} height={180} />
       </Card>
       <div className="space-y-4">
         <Card title="By stream · 30 days">

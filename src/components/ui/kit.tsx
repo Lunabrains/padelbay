@@ -309,7 +309,7 @@ export function PassCard({ pass, compact }: { pass: AccessPass; compact?: boolea
       <div className="pointer-events-none absolute -right-10 -top-10 h-40 w-40 rounded-full border-[18px] border-white/40" />
       <div className="flex items-start justify-between">
         <div>
-          <p className="label-caps text-teal">{pass.kind === "court" ? "Court access pass" : "Smart suite key"}</p>
+          <p className="label-caps text-teal">Digital key</p>
           <p className="mt-1 text-[16px] font-bold leading-tight">{pass.label}</p>
           <p className="mt-1 text-[11.5px] text-ink/60">
             Valid {fmtDate(pass.validFrom)} {fmtTime(pass.validFrom)} → {fmtDate(pass.validTo)} {fmtTime(pass.validTo)}

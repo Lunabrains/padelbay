@@ -87,6 +87,7 @@ export interface Booking {
   source: "app" | "concierge" | "desk" | "waitlist" | "tournament";
   payment: { method: string; status: "paid" | "refunded" | "partial-refund" | "pay-at-venue"; refunded: number };
   passId?: ID;
+  lockerId?: ID;
   openMatchId?: ID;
   cancelledAt?: number;
   checkedInAt?: number;
@@ -116,8 +117,9 @@ export interface WaitlistEntry {
 export interface AccessPass {
   id: ID;
   holderId: ID;
-  kind: "court" | "suite";
-  refId: ID;
+  kind: "court";
+  refId: ID; // booking id
+  lockerId?: ID;
   label: string;
   door: string;
   code: string;
@@ -190,65 +192,24 @@ export interface Order {
   customerId: ID;
   lines: OrderLine[];
   total: number;
-  deliverTo: { kind: "court" | "suite" | "pickup"; refId?: ID; label: string };
+  deliverTo: { kind: "court" | "pickup"; refId?: ID; label: string };
   createdAt: number;
   autoFlow: boolean;
   stage: OrderStage; // used when autoFlow is false
   history: { stage: OrderStage; at: number; by?: string }[];
-  payment: { method: string; status: "paid" | "charged-to-suite" | "refunded" };
+  payment: { method: string; status: "paid" | "refunded" };
   note?: string;
 }
 
-export interface Unit {
+/** Smart kit locker: rackets and balls for one session, opened with the booking's digital key. */
+export interface Locker {
   id: ID;
-  name: string;
-  type: "sea-pod" | "loft" | "villa";
-  typeLabel: string;
-  capacity: number;
-  nightly: number;
-  sqm: number;
-  view: string;
-  features: string[];
-  housekeeping: "clean" | "dirty" | "inspecting" | "out-of-order";
-}
-
-export interface GuestRecord {
-  name: string;
-  email?: string;
-  phone?: string;
-  adult: boolean;
-}
-
-export interface Stay {
-  id: ID;
-  unitId: ID;
-  customerId: ID;
-  checkIn: number; // start of arrival day 15:00
-  checkOut: number; // departure day 11:00
-  guests: GuestRecord[];
-  status: "reserved" | "checked-in" | "checked-out" | "cancelled";
-  packageId?: ID;
-  nightly: number;
-  total: number;
-  createdAt: number;
-  registration?: { completedAt: number; arrivalTime: string; idVerified: boolean; rulesAccepted: boolean; purpose?: string };
-  keyPassId?: ID;
-  checkedInAt?: number;
-  checkedOutAt?: number;
-  rating?: number;
-  folio: { label: string; amount: number; at: number }[];
-}
-
-export interface StayPackage {
-  id: ID;
-  name: string;
-  tagline: string;
-  nights: number;
-  courtHours: number;
-  cafeCredit: number;
-  unitType: Unit["type"];
-  price: number;
-  perks: string[];
+  number: string; // "07"
+  bank: "Hall" | "Sea side";
+  status: "ready" | "check" | "maintenance";
+  kit: { rackets: number; balls: number };
+  lastCheckedAt: number;
+  note?: string;
 }
 
 export interface OpenMatch {
@@ -303,7 +264,7 @@ export interface Staff {
 export interface Task {
   id: ID;
   title: string;
-  area: "courts" | "cafe" | "suites" | "front" | "marketing";
+  area: "courts" | "cafe" | "lockers" | "front" | "marketing";
   refId?: ID;
   assigneeId?: ID;
   due: number;
@@ -355,7 +316,7 @@ export interface Promo {
 export interface Notice {
   id: ID;
   at: number;
-  kind: "booking" | "order" | "stay" | "access" | "loyalty" | "alert" | "ai" | "community" | "system";
+  kind: "booking" | "order" | "locker" | "access" | "loyalty" | "alert" | "ai" | "community" | "system";
   title: string;
   body: string;
   severity: "info" | "success" | "warning" | "critical";
@@ -389,9 +350,7 @@ export interface DB {
   menu: MenuItem[];
   inventory: InventoryItem[];
   orders: Order[];
-  units: Unit[];
-  stays: Stay[];
-  packages: StayPackage[];
+  lockers: Locker[];
   matches: OpenMatch[];
   tournaments: Tournament[];
   invitations: Invitation[];

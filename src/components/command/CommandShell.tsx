@@ -5,7 +5,7 @@ import dynamic from "next/dynamic";
 import Link from "next/link";
 import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import {
-  BarChart3, Bell, BedDouble, BrainCircuit, CalendarCheck, ChevronDown, ClipboardList, Coffee, Crown, Delete, KeyRound, LogOut, Megaphone,
+  BarChart3, Bell, BrainCircuit, CalendarCheck, ChevronDown, ClipboardList, Coffee, Crown, Delete, KeyRound, LogOut, Megaphone,
   Pause, Play, ReceiptText, Shield, Sparkles, Square, Users, Wallet, X, Zap,
 } from "lucide-react";
 import { useFx } from "@/lib/fx";
@@ -21,13 +21,13 @@ import { hasWebGL, useBootStore, useNow, usePrefersReducedMotion, useStaff } fro
 import { onPick, useStage } from "@/lib/stage";
 import { useStore } from "@/lib/store";
 import { DAY, HOUR, fmtAgo, fmtTime, startOfDay } from "@/lib/time";
-import { CafePanel, CourtPanel, SuitesPanel } from "./FacilityPanels";
+import { CafePanel, CourtPanel, LockersPanel } from "./FacilityPanels";
 import { MODULES, ModuleWindow, type ModuleId } from "./Modules";
 
 const Stage = dynamic(() => import("@/components/three/Stage"), { ssr: false });
 const Venue2D = dynamic(() => import("@/components/three/Venue2D"), { ssr: false });
 
-type Facility = { kind: "court"; id: string } | { kind: "cafe" } | { kind: "suites"; id?: string } | null;
+type Facility = { kind: "court"; id: string } | { kind: "cafe" } | { kind: "lockers"; id?: string } | null;
 
 const MODULE_ICON: Record<ModuleId, typeof Users> = {
   reservations: CalendarCheck, orders: ReceiptText, crm: Users, analytics: BarChart3, forecast: BrainCircuit, marketing: Megaphone, tasks: ClipboardList, access: KeyRound, members: Crown, finance: Wallet, team: Shield,
@@ -67,7 +67,7 @@ export default function CommandShell() {
         if (!useStore.getState().session.staffId) return true;
         if (kind === "court") setFacility({ kind: "court", id });
         else if (kind === "cafe") setFacility({ kind: "cafe" });
-        else if (kind === "suite") setFacility({ kind: "suites", id });
+        else if (kind === "locker") setFacility({ kind: "lockers", id: id === "all" ? undefined : id });
         return true;
       }),
     [],
@@ -90,7 +90,7 @@ export default function CommandShell() {
       flyTo(POSES.cafe, { reduced });
     } else {
       set({ focusId: facility.id });
-      flyTo(facility.id ? POSES[facility.id] : POSES.suites, { reduced });
+      flyTo(POSES.lockers, { reduced });
     }
   }, [facility, reduced]);
 
@@ -112,7 +112,7 @@ export default function CommandShell() {
           <Dock facility={facility} onFacility={setFacility} onModule={setModule} />
           {facility?.kind === "court" && <CourtPanel key={facility.id} courtId={facility.id} onClose={() => setFacility(null)} onSwitch={(id) => setFacility({ kind: "court", id })} />}
           {facility?.kind === "cafe" && <CafePanel onClose={() => setFacility(null)} />}
-          {facility?.kind === "suites" && <SuitesPanel unitId={facility.id} onClose={() => setFacility(null)} />}
+          {facility?.kind === "lockers" && <LockersPanel lockerId={facility.id} onClose={() => setFacility(null)} onSelect={(id) => setFacility({ kind: "lockers", id })} />}
           {module && <ModuleWindow id={module} onClose={() => setModule(null)} />}
           <OpsToasts />
           <FxToasts />
@@ -201,7 +201,7 @@ function OwnerStrip({ onOpen }: { onOpen: (m: ModuleId) => void }) {
     { label: "Revenue today", value: `$${Math.round(k.revenue).toLocaleString()}`, sub: `courts $${Math.round(k.court).toLocaleString()} · Sip $${Math.round(k.cafe).toLocaleString()}`, open: "finance" },
     { label: "Court sessions today", value: String(k.bookings), sub: `+${k.newBookings} new bookings in the last hour`, open: "reservations" },
     { label: "Sip orders today", value: String(k.orders), sub: `${k.live} in the kitchen now`, open: "orders" },
-    { label: "Suites in-house", value: String(k.inHouse), sub: "planned concept", open: "reservations" },
+    { label: "Keys active now", value: String(k.keysActive), sub: `${k.lockersToCheck} locker${k.lockersToCheck === 1 ? "" : "s"} to check`, open: "reservations" },
   ];
   return (
     <div className="fixed left-1/2 top-[64px] z-20 hidden -translate-x-1/2 gap-1.5 xl:flex">
@@ -399,12 +399,12 @@ function LiveFeed({ onOpen }: { onOpen: (f: Facility) => void }) {
                 const b = useStore.getState().db.bookings.find((x) => x.id === n.ref!.id);
                 if (b) onOpen({ kind: "court", id: b.courtId });
               } else if (n.ref?.kind === "order") onOpen({ kind: "cafe" });
-              else if (n.ref?.kind === "stay") onOpen({ kind: "suites" });
+              else if (n.ref?.kind === "pass") onOpen({ kind: "lockers" });
             }}
             className="flex w-full gap-2.5 text-left"
             style={{ animation: i === 0 ? "pb-rise 0.6s both" : undefined }}
           >
-            <span className={clsx("mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full", n.kind === "booking" ? "bg-sage" : n.kind === "order" ? "bg-sunset" : n.kind === "stay" ? "bg-[#9dbbff]" : n.kind === "access" ? "bg-white" : "bg-gold")} />
+            <span className={clsx("mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full", n.kind === "booking" ? "bg-sage" : n.kind === "order" ? "bg-sunset" : n.kind === "access" ? "bg-white" : "bg-gold")} />
             <span className="min-w-0 flex-1">
               <span className="block truncate text-[12px] font-semibold text-white">{n.title}</span>
               <span className="block truncate text-[11px] text-white/55">{n.body}</span>
@@ -422,7 +422,7 @@ function Dock({ facility, onFacility, onModule }: { facility: Facility; onFacili
   const facilities = [
     { id: "courts", label: "Courts", icon: Square, on: facility?.kind === "court", go: () => onFacility({ kind: "court", id: "c1" }) },
     { id: "cafe", label: "Sip", icon: Coffee, on: facility?.kind === "cafe", go: () => onFacility({ kind: "cafe" }) },
-    { id: "suites", label: "Suites", icon: BedDouble, on: facility?.kind === "suites", go: () => onFacility({ kind: "suites" }) },
+    { id: "lockers", label: "Lockers", icon: KeyRound, on: facility?.kind === "lockers", go: () => onFacility({ kind: "lockers" }) },
   ];
   return (
     <nav className="fixed inset-x-2 bottom-3 z-30 flex justify-center">

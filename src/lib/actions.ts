@@ -1,6 +1,6 @@
 "use client";
 
-import { ACHIEVEMENTS, CANCELLATION, OPTION_GROUPS, POINTS_PER_DOLLAR, WELCOME_POINTS, tierFor, type Tier } from "./catalog";
+import { ACHIEVEMENTS, CANCELLATION, KEY_WINDOW_MIN, OPTION_GROUPS, POINTS_PER_DOLLAR, WELCOME_POINTS, tierFor, type Tier } from "./catalog";
 import { quote } from "./engine/pricing";
 import { getDB, useStore } from "./store";
 import type { Actor, Booking, Customer, DB, InvitedPlayer, Notice, Order, OrderLine, OrderStage } from "./types";
@@ -210,23 +210,10 @@ export function bookCourt(req: BookingRequest): Result<{ bookings: Booking[]; pa
     db.bookings.push(...created);
     db.holds = db.holds.filter((h) => h.ownerKey !== req.ownerKey);
 
-    // Digital access pass for the first session: valid 15 minutes before until the end.
+    // Paid sessions get a kit locker and a digital key valid 10 min before until 10 min after.
     const first = created[0];
-    const passId = uid("ps");
-    db.passes.unshift({
-      id: passId,
-      holderId: customer.id,
-      kind: "court",
-      refId: first.id,
-      label: `${court.short} · ${fmtDate(first.start)} ${fmtRange(first.start, first.durationMin)}`,
-      door: `${court.short} gate`,
-      code: code(),
-      validFrom: first.start - 15 * MIN,
-      validTo: first.start + first.durationMin * MIN,
-      status: "active",
-      issuedAt: Date.now(),
-    });
-    first.passId = passId;
+    const passId = issueKey(db, first);
+    for (const b of created.slice(1)) assignLocker(db, b);
 
     if (req.openMatch) {
       const m = {
@@ -291,6 +278,7 @@ export function cancelBooking(bookingId: string, by: Actor): Result<{ refund: nu
     b.payment.refunded = refund;
     b.payment.status = rate === 1 ? "refunded" : rate > 0 ? "partial-refund" : b.payment.status;
     db.passes.filter((p) => p.refId === b.id).forEach((p) => (p.status = "revoked"));
+    b.lockerId = undefined;
     const court = db.courts.find((c) => c.id === b.courtId)!;
 
     // Smart cancellation recovery: offer the slot to the waitlist first, then to a likely player.
@@ -334,49 +322,120 @@ export function joinWaitlist(customerId: string, courtId: string | null, start: 
 // Access
 // ---------------------------------------------------------------------------
 
-export function unlockDoor(passId: string, method: "QR" | "BLE" | "NFC" | "Card"): Result<{ granted: boolean; reason?: string }> {
-  const res = safeCommit<{ granted: boolean; reason?: string }>((db) => {
-    const p = db.passes.find((x) => x.id === passId);
-    if (!p) return { ok: false, error: "Pass not found" };
-    const now = Date.now();
-    // Demo mode: a pass for a future session is accepted so the presenter can show the unlock.
-    const granted = p.status === "active" && now <= p.validTo;
-    const reason = p.status !== "active" ? "Pass revoked" : now > p.validTo ? "Pass expired" : undefined;
-    db.accessLogs.unshift({ id: uid("al"), at: now, passId: p.id, holderId: p.holderId, door: p.door, method, result: granted ? "granted" : "denied", reason });
-    const holder = db.customers.find((c) => c.id === p.holderId);
-    audit(db, { type: "customer", id: p.holderId }, granted ? "access.granted" : "access.denied", "door", `${p.door} ${granted ? "opened" : "refused"} for ${holder?.name} via ${method}`, p.id);
-    notify(db, { kind: "access", title: `${p.door} ${granted ? "unlocked" : "refused"}`, body: `${holder?.name} · ${method === "Card" ? "Padel Bay Club card" : `${method} digital key`}${reason ? ` · ${reason}` : ""}`, severity: granted ? "info" : "warning", audience: "staff", ref: { kind: "pass", id: p.id } });
-    const reward = granted ? award(db, p.holderId, 0, ["key-holder"]) : undefined;
-    return { ok: true, value: { granted, reason }, reward };
-  });
-  return res;
+/** Pick a ready locker in the court's bank that is free for the whole key window. */
+export function assignLocker(db: DB, b: Booking): string | undefined {
+  if (b.lockerId) return b.lockerId;
+  const from = b.start - KEY_WINDOW_MIN * MIN;
+  const to = b.start + (b.durationMin + KEY_WINDOW_MIN) * MIN;
+  const bank = b.courtId === "c1" || b.courtId === "c2" ? "Hall" : "Sea side";
+  const busy = new Set(
+    db.bookings
+      .filter((x) => x.id !== b.id && x.lockerId && x.status === "confirmed" && x.start - KEY_WINDOW_MIN * MIN < to && from < x.start + (x.durationMin + KEY_WINDOW_MIN) * MIN)
+      .map((x) => x.lockerId!),
+  );
+  const ready = db.lockers.filter((l) => l.status === "ready" && !busy.has(l.id));
+  const locker = ready.find((l) => l.bank === bank) ?? ready[0];
+  if (locker) b.lockerId = locker.id;
+  return locker?.id;
 }
 
-/** The club card opens any confirmed court booking: issue its door credential on first tap. */
+export function kitFor(b: Pick<Booking, "players">) {
+  return { rackets: Math.min(4, Math.max(2, b.players.length + 1)), balls: 3 };
+}
+
+/** Issue (or return) the digital key for a booking: its kit locker plus the court gate. */
+function issueKey(db: DB, b: Booking): string {
+  if (b.passId) return b.passId;
+  const court = db.courts.find((c) => c.id === b.courtId)!;
+  const lockerId = assignLocker(db, b);
+  const locker = db.lockers.find((l) => l.id === lockerId);
+  const kit = kitFor(b);
+  const passId = uid("ps");
+  db.passes.unshift({
+    id: passId,
+    holderId: b.customerId,
+    kind: "court",
+    refId: b.id,
+    lockerId,
+    label: `${court.short} · ${fmtDate(b.start)} ${fmtRange(b.start, b.durationMin)} · ${kit.rackets} rackets + balls`,
+    door: locker ? `Locker ${locker.number}` : `${court.short} gate`,
+    code: code(),
+    validFrom: b.start - KEY_WINDOW_MIN * MIN,
+    validTo: b.start + (b.durationMin + KEY_WINDOW_MIN) * MIN,
+    status: "active",
+    issuedAt: Date.now(),
+  });
+  b.passId = passId;
+  return passId;
+}
+
+/** Any confirmed booking gets its key on first use (seeded bookings included). */
 export function ensureCourtPass(bookingId: string): Result<string> {
   const existing = getDB().bookings.find((b) => b.id === bookingId)?.passId;
   if (existing) return { ok: true, value: existing };
   return safeCommit((db) => {
     const b = db.bookings.find((x) => x.id === bookingId);
     if (!b || b.status !== "confirmed") return { ok: false, error: "Booking not found" };
-    const court = db.courts.find((c) => c.id === b.courtId)!;
-    const passId = uid("ps");
-    db.passes.unshift({
-      id: passId,
-      holderId: b.customerId,
-      kind: "court",
-      refId: b.id,
-      label: `${court.short} · ${fmtDate(b.start)} ${fmtRange(b.start, b.durationMin)}`,
-      door: `${court.short} gate`,
-      code: code(),
-      validFrom: b.start - 15 * MIN,
-      validTo: b.start + b.durationMin * MIN,
-      status: "active",
-      issuedAt: Date.now(),
-    });
-    b.passId = passId;
-    return { ok: true, value: passId };
+    return { ok: true, value: issueKey(db, b) };
   });
+}
+
+export function keyState(p: { status: string; validFrom: number; validTo: number }, at = Date.now()): { open: boolean; reason?: string } {
+  if (p.status !== "active") return { open: false, reason: "Key revoked" };
+  if (at < p.validFrom) return { open: false, reason: `Key activates at ${fmtTime(p.validFrom)}` };
+  if (at > p.validTo) return { open: false, reason: `Key expired at ${fmtTime(p.validTo)}` };
+  return { open: true };
+}
+
+/**
+ * Open a door with the booking's digital key. Strict window: from 10 minutes before the session
+ * until 10 minutes after it ends. `demoAt` lets a presenter show the unlock at arrival time.
+ */
+export function unlockDoor(
+  passId: string,
+  method: "QR" | "BLE" | "NFC" | "Card",
+  opts: { door?: "locker" | "gate"; demoAt?: number } = {},
+): Result<{ granted: boolean; reason?: string; door: string }> {
+  return safeCommit((db) => {
+    const p = db.passes.find((x) => x.id === passId);
+    if (!p) return { ok: false, error: "Key not found" };
+    const b = db.bookings.find((x) => x.id === p.refId);
+    const court = db.courts.find((c) => c.id === b?.courtId);
+    const locker = db.lockers.find((l) => l.id === (p.lockerId ?? b?.lockerId));
+    const door = opts.door === "gate" || !locker ? `${court?.short ?? "Court"} gate` : `Locker ${locker.number}`;
+    const at = opts.demoAt ?? Date.now();
+    const st = keyState(p, at);
+    const granted = st.open;
+    const reason = st.open ? undefined : st.reason;
+    const demo = opts.demoAt ? " (demo: simulated arrival)" : "";
+    db.accessLogs.unshift({ id: uid("al"), at: Date.now(), passId: p.id, holderId: p.holderId, door, method, result: granted ? "granted" : "denied", reason: reason ?? (demo ? "Demo arrival time" : undefined) });
+    const holder = db.customers.find((c) => c.id === p.holderId);
+    audit(db, { type: "customer", id: p.holderId }, granted ? "access.granted" : "access.denied", "door", `${door} ${granted ? "opened" : "refused"} for ${holder?.name} via ${method}${demo}`, p.id);
+    notify(db, {
+      kind: "access",
+      title: `${door} ${granted ? "opened" : "refused"}`,
+      body: `${holder?.name} · ${method === "Card" ? "Padel Bay Club card" : `${method} digital key`}${reason ? ` · ${reason}` : ""}${demo}`,
+      severity: granted ? "info" : "warning",
+      audience: "staff",
+      ref: { kind: "pass", id: p.id },
+    });
+    const ach = granted && door.startsWith("Locker") ? ["key-holder", ...(b && at < b.start ? ["on-time"] : [])] : [];
+    const reward = granted ? award(db, p.holderId, 0, ach) : undefined;
+    return { ok: true, value: { granted, reason, door }, reward };
+  });
+}
+
+/** Staff: kit counted and restocked, locker back in rotation (or out for maintenance). */
+export function checkLocker(lockerId: string, staffId: string, status: "ready" | "maintenance" = "ready", note?: string) {
+  staffAction(staffId, `Locker ${lockerId.slice(2)} ${status === "ready" ? "checked and restocked" : "set to maintenance"}`, (db) => {
+    const l = db.lockers.find((x) => x.id === lockerId);
+    if (!l) return;
+    l.status = status;
+    l.kit = { rackets: 4, balls: 3 };
+    l.lastCheckedAt = Date.now();
+    l.note = note;
+    db.tasks.filter((t) => t.refId === lockerId && t.status !== "done").forEach((t) => (t.status = "done"));
+  }, "locker.check", "locker");
 }
 
 export function revokePass(passId: string, staffId: string): Result<true> {
@@ -444,7 +503,7 @@ export function placeOrder(input: { customerId: string; lines: OrderLine[]; deli
       autoFlow: true,
       stage: "received",
       history: [{ stage: "received", at: Date.now() }],
-      payment: { method: input.method, status: input.deliverTo.kind === "suite" && input.method === "Charge to suite" ? "charged-to-suite" : "paid" },
+      payment: { method: input.method, status: "paid" },
       note: input.note,
     };
     db.orders.push(order);
@@ -459,10 +518,6 @@ export function placeOrder(input: { customerId: string; lines: OrderLine[]; deli
           notify(db, { kind: "alert", title: `${inv.name} below reorder point`, body: `${inv.qty} ${inv.unit} left. AI suggests reordering ${Math.round(inv.par - inv.qty)} ${inv.unit}.`, severity: "warning", audience: "staff", ref: { kind: "inventory", id: inv.id } });
         }
       }
-    }
-    if (input.deliverTo.kind === "suite") {
-      const stay = db.stays.find((s) => s.id === input.deliverTo.refId);
-      stay?.folio.push({ label: `Sip order #${order.number}`, amount: total, at: Date.now() });
     }
     const ach = input.deliverTo.kind === "court" ? ["sip-and-play"] : [];
     const reward = award(db, customer.id, Math.round(total * POINTS_PER_DOLLAR.cafe), ach);
@@ -480,97 +535,6 @@ export function setOrderStage(orderId: string, stage: OrderStage, staffId: strin
     o.stage = stage;
     o.history.push({ stage, at: Date.now(), by: staffId });
     audit(db, { type: "staff", id: staffId }, "order.stage", "order", `Order #${o.number} → ${stage}`, o.id);
-    return { ok: true, value: true };
-  });
-}
-
-// ---------------------------------------------------------------------------
-// Bay Suites (planned accommodation, simulated)
-// ---------------------------------------------------------------------------
-
-export function unitAvailable(db: DB, unitId: string, checkIn: number, checkOut: number, ignoreStayId?: string) {
-  return !db.stays.some((s) => s.unitId === unitId && s.id !== ignoreStayId && s.status !== "cancelled" && s.status !== "checked-out" && s.checkIn < checkOut && checkIn < s.checkOut);
-}
-
-export function bookStay(input: { customerId: string; unitId: string; arrivalDay: number; nights: number; guests: number; packageId?: string; method: string }): Result<string> {
-  return safeCommit((db) => {
-    const customer = db.customers.find((c) => c.id === input.customerId);
-    if (!customer) return { ok: false, error: "Sign in to reserve" };
-    const unit = db.units.find((u) => u.id === input.unitId)!;
-    if (input.guests > unit.capacity) return { ok: false, error: `${unit.name} sleeps ${unit.capacity}` };
-    const checkIn = atHour(input.arrivalDay, 15);
-    const checkOut = atHour(addDays(input.arrivalDay, input.nights), 11);
-    if (!unitAvailable(db, unit.id, checkIn, checkOut)) return { ok: false, error: `${unit.name} is taken on those nights` };
-    const pkg = db.packages.find((p) => p.id === input.packageId);
-    const total = pkg ? pkg.price : unit.nightly * input.nights;
-    const id = uid("st");
-    db.stays.push({
-      id,
-      unitId: unit.id,
-      customerId: customer.id,
-      checkIn,
-      checkOut,
-      guests: [{ name: customer.name, email: customer.email, phone: customer.phone, adult: true }],
-      status: "reserved",
-      packageId: pkg?.id,
-      nightly: unit.nightly,
-      total,
-      createdAt: Date.now(),
-      folio: [{ label: pkg ? `${pkg.name} package` : `${input.nights} nights · ${unit.name}`, amount: total, at: Date.now() }],
-    });
-    const reward = award(db, customer.id, Math.round(total * POINTS_PER_DOLLAR.stays));
-    notify(db, { kind: "stay", title: `New reservation · ${unit.name}`, body: `${customer.name} · ${fmtDate(checkIn)} for ${input.nights} night${input.nights > 1 ? "s" : ""}${pkg ? ` · ${pkg.name}` : ""}`, severity: "success", audience: "staff", ref: { kind: "stay", id } });
-    audit(db, { type: "customer", id: customer.id }, "stay.create", "stay", `${customer.name} reserved ${unit.name} ${fmtDate(checkIn)} ×${input.nights}`, id);
-    return { ok: true, value: id, reward };
-  });
-}
-
-export function registerGuests(stayId: string, data: { guests: { name: string; adult: boolean }[]; arrivalTime: string; idVerified: boolean; rulesAccepted: boolean }): Result<true> {
-  return safeCommit((db) => {
-    const s = db.stays.find((x) => x.id === stayId);
-    if (!s) return { ok: false, error: "Reservation not found" };
-    if (!data.rulesAccepted) return { ok: false, error: "Please accept the house rules" };
-    if (!data.idVerified) return { ok: false, error: "Verify the lead guest's ID first" };
-    s.guests = [s.guests[0], ...data.guests.filter((g) => g.name.trim()).map((g) => ({ name: g.name.trim(), adult: g.adult }))];
-    s.registration = { completedAt: Date.now(), arrivalTime: data.arrivalTime, idVerified: true, rulesAccepted: true };
-    audit(db, { type: "customer", id: s.customerId }, "stay.register", "stay", `Guest registration completed for ${s.guests.length} guest(s)`, s.id);
-    return { ok: true, value: true };
-  });
-}
-
-export function checkInStay(stayId: string): Result<string> {
-  return safeCommit((db) => {
-    const s = db.stays.find((x) => x.id === stayId);
-    if (!s) return { ok: false, error: "Reservation not found" };
-    if (!s.registration) return { ok: false, error: "Complete guest registration first" };
-    const unit = db.units.find((u) => u.id === s.unitId)!;
-    s.status = "checked-in";
-    s.checkedInAt = Date.now();
-    const passId = uid("ps");
-    db.passes.unshift({ id: passId, holderId: s.customerId, kind: "suite", refId: s.id, label: `${unit.name} · until ${fmtDate(s.checkOut)}`, door: `${unit.name} door`, code: code(), validFrom: Date.now(), validTo: s.checkOut + HOUR, status: "active", issuedAt: Date.now() });
-    s.keyPassId = passId;
-    const c = db.customers.find((x) => x.id === s.customerId);
-    const reward = award(db, s.customerId, 0, ["bay-sleeper"]);
-    notify(db, { kind: "stay", title: `Digital check-in · ${unit.name}`, body: `${c?.name} checked in. Smart key issued.`, severity: "success", audience: "staff", ref: { kind: "stay", id: s.id } });
-    audit(db, { type: "customer", id: s.customerId }, "stay.checkin", "stay", `${c?.name} checked in to ${unit.name}; key issued`, s.id);
-    return { ok: true, value: passId, reward };
-  });
-}
-
-export function checkOutStay(stayId: string, rating: number): Result<true> {
-  return safeCommit((db) => {
-    const s = db.stays.find((x) => x.id === stayId);
-    if (!s) return { ok: false, error: "Reservation not found" };
-    const unit = db.units.find((u) => u.id === s.unitId)!;
-    s.status = "checked-out";
-    s.checkedOutAt = Date.now();
-    s.rating = rating;
-    db.passes.filter((p) => p.refId === s.id).forEach((p) => (p.status = "revoked"));
-    unit.housekeeping = "dirty";
-    db.tasks.unshift({ id: uid("tk"), title: `Turn over ${unit.name} after checkout`, area: "suites", refId: unit.id, assigneeId: "s-house", due: Date.now() + 3 * HOUR, status: "todo", priority: "normal", createdBy: "system", createdAt: Date.now() });
-    const c = db.customers.find((x) => x.id === s.customerId);
-    notify(db, { kind: "stay", title: `Checked out · ${unit.name}`, body: `${c?.name} rated the stay ${rating}/5. Key revoked, housekeeping task created.`, severity: "info", audience: "staff", ref: { kind: "stay", id: s.id } });
-    audit(db, { type: "customer", id: s.customerId }, "stay.checkout", "stay", `${c?.name} checked out of ${unit.name}`, s.id);
     return { ok: true, value: true };
   });
 }

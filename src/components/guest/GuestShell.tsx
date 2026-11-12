@@ -4,7 +4,7 @@ import dynamic from "next/dynamic";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { Suspense, useEffect, type ReactNode } from "react";
-import { BedDouble, Box, Coffee, Crown, MessageCircle, Square, Trophy, Users, X } from "lucide-react";
+import { Box, Coffee, Crown, MessageCircle, Square, Trophy, Users, X } from "lucide-react";
 import { LogoDuoLight } from "@/components/brand/Logo";
 import { POSES, flyTo } from "@/components/three/rig";
 import { TIERS, tierFor } from "@/lib/catalog";
@@ -20,7 +20,6 @@ const Venue2D = dynamic(() => import("@/components/three/Venue2D"), { ssr: false
 export const ZONES = [
   { href: "/courts", label: "Courts", icon: Square, zone: "courts" },
   { href: "/cafe", label: "Sip", icon: Coffee, zone: "cafe" },
-  { href: "/stay", label: "Suites", icon: BedDouble, zone: "suites" },
   { href: "/club", label: "Club", icon: Crown, zone: "club" },
   { href: "/community", label: "Community", icon: Trophy, zone: "community" },
 ] as const;
@@ -42,7 +41,7 @@ export default function GuestShell({ children }: { children: ReactNode }) {
       onPick((kind, id) => {
         if (kind === "court") router.push(`/courts?court=${id}`);
         else if (kind === "cafe") router.push("/cafe");
-        else if (kind === "suite") router.push(`/stay?unit=${id}`);
+        else if (kind === "locker") router.push("/me");
         else if (kind === "tier" || kind === "club") router.push(`/club${kind === "tier" ? `?tier=${id}` : ""}`);
         return true;
       }),

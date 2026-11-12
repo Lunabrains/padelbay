@@ -1,8 +1,8 @@
-import { WELCOME_POINTS } from "./catalog";
+import { KEY_WINDOW_MIN, LOCKER_COUNT, WELCOME_POINTS } from "./catalog";
 import { quote } from "./engine/pricing";
 import type {
-  AccessLog, Booking, Campaign, Court, Customer, DB, InventoryItem, MenuItem, Notice, OpenMatch, Order, Stay,
-  StayPackage, Staff, Task, Tournament, Unit,
+  AccessLog, Booking, Campaign, Court, Customer, DB, InventoryItem, Locker, MenuItem, Notice, OpenMatch, Order,
+  Staff, Task, Tournament,
 } from "./types";
 import { DAY, HOUR, MIN, addDays, atHour, startOfDay } from "./time";
 
@@ -82,22 +82,18 @@ function inventory(): InventoryItem[] {
   ];
 }
 
-const UNITS: Unit[] = [
-  { id: "sp1", name: "Sea Pod 1", type: "sea-pod", typeLabel: "Sea Pod", capacity: 2, nightly: 140, sqm: 28, view: "Mediterranean, west-facing", features: ["Sunset deck", "Rain shower", "Smart lock", "Racket wall"], housekeeping: "clean" },
-  { id: "sp2", name: "Sea Pod 2", type: "sea-pod", typeLabel: "Sea Pod", capacity: 2, nightly: 140, sqm: 28, view: "Mediterranean, west-facing", features: ["Sunset deck", "Rain shower", "Smart lock", "Racket wall"], housekeeping: "clean" },
-  { id: "sp3", name: "Sea Pod 3", type: "sea-pod", typeLabel: "Sea Pod", capacity: 2, nightly: 150, sqm: 30, view: "Corner pod, beach and courts", features: ["Wrap-around deck", "Outdoor shower", "Smart lock"], housekeeping: "dirty" },
-  { id: "sp4", name: "Sea Pod 4", type: "sea-pod", typeLabel: "Sea Pod", capacity: 2, nightly: 140, sqm: 28, view: "Mediterranean, west-facing", features: ["Sunset deck", "Rain shower", "Smart lock"], housekeeping: "clean" },
-  { id: "l1", name: "Court-side Loft 1", type: "loft", typeLabel: "Court-side Loft", capacity: 3, nightly: 190, sqm: 42, view: "Overlooks Court 1 and the bay", features: ["Mezzanine bed", "Recovery corner", "Smart lock", "Espresso bar"], housekeeping: "clean" },
-  { id: "l2", name: "Court-side Loft 2", type: "loft", typeLabel: "Court-side Loft", capacity: 3, nightly: 190, sqm: 42, view: "Overlooks Court 2 and the hall", features: ["Mezzanine bed", "Recovery corner", "Smart lock"], housekeeping: "inspecting" },
-  { id: "v1", name: "Bay Villa", type: "villa", typeLabel: "Bay Villa", capacity: 5, nightly: 360, sqm: 96, view: "Private terrace on the sand", features: ["Plunge pool", "Two bedrooms", "Private chef option", "Smart lock"], housekeeping: "clean" },
-];
-
-const PACKAGES: StayPackage[] = [
-  { id: "pk-weekend", name: "Play & Stay Weekend", tagline: "Two sunsets, three hours of padel", nights: 2, courtHours: 3, cafeCredit: 30, unitType: "sea-pod", price: 399, perks: ["2 nights in a Sea Pod", "3 court hours, any court", "$30 Sip credit", "Late checkout 13:00"] },
-  { id: "pk-sunrise", name: "Sunrise Session", tagline: "Wake up, walk to court 1", nights: 1, courtHours: 1.5, cafeCredit: 20, unitType: "sea-pod", price: 219, perks: ["1 night in a Sea Pod", "07:00 court, 90 minutes", "Sip breakfast for two"] },
-  { id: "pk-camp", name: "Coach Camp", tagline: "Three days to level up", nights: 3, courtHours: 4.5, cafeCredit: 45, unitType: "loft", price: 849, perks: ["3 nights in a Court-side Loft", "3 coached sessions", "Daily recovery shake", "Video analysis"] },
-  { id: "pk-villa", name: "Villa Squad", tagline: "Bring the four. Own the weekend.", nights: 2, courtHours: 4, cafeCredit: 60, unitType: "villa", price: 990, perks: ["2 nights in the Bay Villa", "4 court hours", "Tournament entry for two", "Private sunset dinner"] },
-];
+// 24 smart kit lockers in two banks, each stocked for one session.
+function lockers(now: number): Locker[] {
+  return Array.from({ length: LOCKER_COUNT }, (_, i) => ({
+    id: `lk${String(i + 1).padStart(2, "0")}`,
+    number: String(i + 1).padStart(2, "0"),
+    bank: (i < 12 ? "Hall" : "Sea side") as Locker["bank"],
+    status: (i === 6 ? "check" : i === 17 ? "maintenance" : "ready") as Locker["status"],
+    kit: { rackets: 4, balls: 3 },
+    lastCheckedAt: now - (2 + (i % 5)) * HOUR,
+    note: i === 17 ? "Lock battery low, replacement booked" : i === 6 ? "Returned with 3 rackets, one missing" : undefined,
+  }));
+}
 
 const STAFF: Staff[] = [
   { id: "s-gm", name: "Nadine Khoury", role: "gm", pin: "2026", hue: 160 },
@@ -294,26 +290,18 @@ export function createSeed(now: number = Date.now()): DB {
     });
   }
 
-  // --- stays (Bay Suites concept, simulated reservations) -------------------------
-  const stays: Stay[] = [];
-  const stayPlan: [string, number, number, Stay["status"]][] = [
-    ["sp1", -3, 2, "checked-out"], ["sp2", -1, 3, "checked-in"], ["l1", -2, 4, "checked-in"], ["v1", 2, 2, "reserved"],
-    ["sp4", 1, 2, "reserved"], ["l2", 4, 3, "reserved"], ["sp1", 5, 2, "reserved"], ["sp3", 7, 3, "reserved"],
-  ];
-  for (const [unitId, startOffset, nights, status] of stayPlan) {
-    const unit = UNITS.find((u) => u.id === unitId)!;
-    const guest = pick(regulars);
-    const checkIn = atHour(addDays(today, startOffset), 15);
-    const checkOut = atHour(addDays(today, startOffset + nights), 11);
-    stays.push({
-      id: id("st"), unitId, customerId: guest.id, checkIn, checkOut,
-      guests: [{ name: guest.name, email: guest.email, phone: guest.phone, adult: true }, ...(unit.capacity > 2 ? [{ name: pick(FIRST) + " " + guest.name.split(" ")[1], adult: true }] : [])],
-      status, nightly: unit.nightly, total: unit.nightly * nights, createdAt: checkIn - 9 * DAY,
-      registration: status !== "reserved" ? { completedAt: checkIn - DAY, arrivalTime: "16:00", idVerified: true, rulesAccepted: true } : undefined,
-      checkedInAt: status !== "reserved" ? checkIn + HOUR : undefined,
-      checkedOutAt: status === "checked-out" ? checkOut - HOUR : undefined,
-      folio: [{ label: `${nights} nights · ${unit.name}`, amount: unit.nightly * nights, at: checkIn }],
-    });
+  // --- kit lockers: every session from yesterday on gets one, never shared within its key window ---
+  const LOCKERS = lockers(now);
+  const usable = LOCKERS.filter((l) => l.status === "ready");
+  const freeAt = new Map<string, number>();
+  for (const b of [...bookings].filter((x) => x.kind !== "maintenance" && x.status === "confirmed" && x.start > today - DAY).sort((a, z) => a.start - z.start)) {
+    const from = b.start - KEY_WINDOW_MIN * MIN;
+    const to = b.start + (b.durationMin + KEY_WINDOW_MIN) * MIN;
+    const bank = b.courtId === "c1" || b.courtId === "c2" ? "Hall" : "Sea side";
+    const locker = usable.filter((l) => l.bank === bank).find((l) => (freeAt.get(l.id) ?? 0) <= from) ?? usable.find((l) => (freeAt.get(l.id) ?? 0) <= from);
+    if (!locker) continue;
+    b.lockerId = locker.id;
+    freeAt.set(locker.id, to);
   }
 
   // --- open matches, tournaments, invitations -------------------------------------
@@ -335,7 +323,7 @@ export function createSeed(now: number = Date.now()): DB {
   const tournaments: Tournament[] = [
     { id: "t-americano", name: "Winter Tides Americano", format: "Americano", start: atHour(addDays(today, 9), 17), level: [2.5, 4], entryFee: 25, maxTeams: 16, status: "registration", prize: "Sip tumblers + 3 months Challenger boost", teams: [] },
     { id: "t-mixed", name: "Sip × PB Mixed Doubles", format: "Round robin", start: atHour(addDays(today, 16), 16), level: [3, 5], entryFee: 35, maxTeams: 12, status: "registration", prize: "$600 in Bay credit", teams: [] },
-    { id: "t-knockout", name: "Sunset Knockout", format: "Knockout", start: atHour(addDays(today, 5), 18), level: [4, 6], entryFee: 40, maxTeams: 8, status: "registration", prize: "Bay Villa weekend", teams: [] },
+    { id: "t-knockout", name: "Sunset Knockout", format: "Knockout", start: atHour(addDays(today, 5), 18), level: [4, 6], entryFee: 40, maxTeams: 8, status: "registration", prize: "A season of free court time", teams: [] },
   ];
   const pool = [...regulars];
   for (const [t, n] of [[0, 11], [1, 7], [2, 6]] as const) {
@@ -351,10 +339,10 @@ export function createSeed(now: number = Date.now()): DB {
     { id: id("tk"), title: "Net tension check and cable swap", area: "courts", refId: "c4", assigneeId: "s-desk", due: atHour(addDays(today, 1), 8), status: "todo", priority: "high", createdBy: "system", createdAt: now - 5 * HOUR },
     { id: id("tk"), title: "Squeegee and dry outdoor turf after the evening dew", area: "courts", refId: "c3", assigneeId: "s-coach", due: atHour(today, 17), status: "doing", priority: "normal", createdBy: "s-gm", createdAt: now - 7 * HOUR },
     { id: id("tk"), title: "Restock oat milk (below reorder point)", area: "cafe", assigneeId: "s-cafe", due: now + 2 * HOUR, status: "todo", priority: "high", createdBy: "ai", createdAt: now - HOUR },
-    { id: id("tk"), title: "Turn over Sea Pod 3 after checkout", area: "suites", refId: "sp3", assigneeId: "s-house", due: now + 3 * HOUR, status: "todo", priority: "normal", createdBy: "system", createdAt: now - 2 * HOUR },
-    { id: id("tk"), title: "Final inspection, Court-side Loft 2", area: "suites", refId: "l2", assigneeId: "s-house", due: now + 5 * HOUR, status: "doing", priority: "normal", createdBy: "s-gm", createdAt: now - 3 * HOUR },
+    { id: id("tk"), title: "Locker 07 returned short one racket: check and restock", area: "lockers", refId: "lk07", assigneeId: "s-house", due: now + HOUR, status: "todo", priority: "high", createdBy: "system", createdAt: now - 2 * HOUR },
+    { id: id("tk"), title: "Replace lock battery on Locker 18", area: "lockers", refId: "lk18", assigneeId: "s-house", due: now + 5 * HOUR, status: "doing", priority: "normal", createdBy: "s-gm", createdAt: now - 3 * HOUR },
     { id: id("tk"), title: "Post the Winter Tides Americano teaser", area: "marketing", assigneeId: "s-mkt", due: now + DAY, status: "todo", priority: "normal", createdBy: "s-gm", createdAt: now - DAY },
-    { id: id("tk"), title: "Welcome kit for Bay Villa arrival", area: "suites", refId: "v1", assigneeId: "s-house", due: atHour(addDays(today, 2), 13), status: "todo", priority: "low", createdBy: "system", createdAt: now - DAY },
+    { id: id("tk"), title: "Swap worn overgrips on Sea side locker rackets", area: "lockers", assigneeId: "s-house", due: atHour(addDays(today, 1), 13), status: "todo", priority: "low", createdBy: "ai", createdAt: now - DAY },
   ];
 
   const campaigns: Campaign[] = [
@@ -397,9 +385,7 @@ export function createSeed(now: number = Date.now()): DB {
     menu: MENU,
     inventory: inventory(),
     orders,
-    units: UNITS,
-    stays,
-    packages: PACKAGES,
+    lockers: LOCKERS,
     matches,
     tournaments,
     invitations: [],

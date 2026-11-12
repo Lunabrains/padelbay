@@ -28,7 +28,7 @@ const SUNSET_BEIRUT = [17.0, 17.4, 17.75, 19.1, 19.4, 19.75, 19.75, 19.35, 18.75
 const CHAPTER_RAIL = [
   { id: "courts", n: "01", label: "Courts" },
   { id: "sip", n: "02", label: "Sip café" },
-  { id: "suites", n: "03", label: "Bay Suites" },
+  { id: "lockers", n: "03", label: "Kit lockers" },
   { id: "club", n: "04", label: "The Club" },
   { id: "community", n: "05", label: "Community" },
 ];
@@ -168,7 +168,7 @@ export default function Landing() {
       <Stats />
       <CourtsChapter />
       <SipChapter />
-      <SuitesChapter />
+      <LockersChapter />
       <ClubChapter />
       <CommunityChapter />
       <ConciergeChapter />
@@ -228,7 +228,7 @@ function Hero() {
         </h1>
         <div className="mt-4 flex flex-col gap-6 md:mt-2 md:flex-row md:items-end md:justify-between">
           <p data-hero-fade className="max-w-md text-[14px] leading-relaxed text-white/85 md:text-[17px]">
-            <span className="font-semibold text-white">Play hard. Sip slow.</span> Indoor and sea-side padel, specialty coffee by Sip<span className="hidden sm:inline">, stays on the sand, and a club that levels up with you</span>.
+            <span className="font-semibold text-white">Play hard. Sip slow.</span> Indoor and sea-side padel, specialty coffee by Sip<span className="hidden sm:inline">, kit lockers that open with your card, and a club that levels up with you</span>.
           </p>
           <div data-hero-fade className="flex flex-wrap gap-3">
             <Link href="/courts" className="group flex h-13 items-center gap-2 rounded-full bg-white px-6 py-3.5 text-[14px] font-semibold text-ink transition hover:bg-sage">
@@ -344,7 +344,7 @@ function Stats() {
 
 function ChapterShell({ id, pose, zone, n, kicker, title, children, tall = "h-[190vh]", align = "left" }: { id: string; pose: string; zone: Zone; n: string; kicker: string; title: React.ReactNode; children?: React.ReactNode; tall?: string; align?: "left" | "right" }) {
   return (
-    <section id={id} data-pose={pose} data-zone={zone === "suites" ? "suites" : zone} data-stagezone={zone} className={`relative ${tall}`}>
+    <section id={id} data-pose={pose} data-zone={zone} data-stagezone={zone} className={`relative ${tall}`}>
       <div className={`sticky top-0 flex h-[100svh] flex-col justify-end px-4 pb-28 pt-24 md:px-10 md:pb-12 lg:justify-center ${align === "right" ? "lg:items-end" : ""}`}>
         <div className="w-full max-w-[560px]">
           <div data-fade className="flex items-center gap-3 text-white/80">
@@ -433,7 +433,7 @@ function SipChapter() {
               refuel your <span className="text-gold">energy.</span>
             </h2>
             <p data-fade className="max-w-sm text-[14.5px] leading-relaxed text-white/85">
-              At the adjacent health café: order from your court and it lands before your water break ends. Or charge it to your suite.
+              At the adjacent health café: order from your court and it lands before your water break ends.
             </p>
           </div>
         </div>
@@ -474,28 +474,41 @@ function SipChapter() {
   );
 }
 
-function SuitesChapter() {
-  const packages = useStore((s) => s.db.packages);
+function LockersChapter() {
+  const steps = [
+    { t: "Book & pay", d: "Your court is confirmed and a kit locker is assigned to the session." },
+    { t: "Key on your card", d: "A digital key lands on your Padel Bay Club card in the portal." },
+    { t: "Open at −10 min", d: "It opens your locker and the court gate 10 minutes before you play." },
+    { t: "Return by +10 min", d: "Rackets back in the locker. The key expires 10 minutes after the session." },
+  ];
   return (
-    <ChapterShell id="suites" pose="suites" zone="suites" n="03" kicker="Bay Suites · Future experience" title={<>stay &amp;<br />play.</>}>
+    <ChapterShell id="lockers" pose="lockers" zone="lockers" n="03" kicker="Kit lockers · self-service" title={<>grab &amp;<br />go.</>}>
       <div className="glass rounded-[28px] p-5 md:p-6">
-        <span data-fade className="inline-flex items-center gap-2 rounded-full border border-gold/40 bg-gold/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-wider text-gold">
-          Concept · a planned addition, not yet open
-        </span>
-        <p data-fade className="mt-3 text-[14.5px] leading-relaxed text-white/85">
-          Sea Pods on the sand, court-side lofts and a villa with a plunge pool. Digital check-in, a smart key on your phone, and packages that bundle nights, court time and Sip credit.
+        <p data-fade className="text-[14.5px] leading-relaxed text-white/85">
+          No queue at the desk. Rackets for every player and a fresh tube of balls wait in a smart locker, opened by the digital key on your club card.
         </p>
         <div data-stagger className="mt-4 grid grid-cols-2 gap-2">
-          {packages.map((p) => (
-            <Link key={p.id} href={`/stay?package=${p.id}`} className="group rounded-2xl border border-white/12 bg-white/6 p-3 transition hover:border-gold/50 hover:bg-gold/10">
-              <p className="text-[13px] font-semibold leading-tight text-white">{p.name}</p>
-              <p className="mt-1 text-[11px] leading-snug text-white/60">{p.tagline}</p>
-              <p className="mt-2 text-[15px] font-semibold tabular text-gold">${p.price}</p>
-            </Link>
+          {steps.map((s, i) => (
+            <div key={s.t} className="rounded-2xl border border-white/12 bg-white/6 p-3">
+              <p className="flex items-center gap-2 text-[13px] font-semibold text-white">
+                <span className="flex h-5 w-5 items-center justify-center rounded-full bg-[#3fd6c8] text-[10.5px] font-bold text-ink">{i + 1}</span>
+                {s.t}
+              </p>
+              <p className="mt-1 text-[11.5px] leading-snug text-white/60">{s.d}</p>
+            </div>
           ))}
         </div>
-        <Link href="/stay" className="group mt-5 flex h-12 items-center justify-center gap-2 rounded-full bg-white text-[14px] font-semibold text-ink transition hover:bg-gold">
-          Explore Bay Suites <ArrowRight size={16} className="transition group-hover:translate-x-1" />
+        <div data-fade className="mt-4 flex items-center gap-3 rounded-2xl bg-ink/40 px-4 py-3">
+          <span className="font-mono text-[12px] text-white/55">19:50</span>
+          <span className="relative h-1.5 flex-1 rounded-full bg-white/10">
+            <span className="absolute inset-y-0 left-[9%] right-[9%] rounded-full bg-[#3fd6c8]" />
+            <span className="absolute -top-5 left-[9%] text-[10px] text-white/50">20:00 play</span>
+            <span className="absolute -top-5 right-[9%] text-[10px] text-white/50">21:30</span>
+          </span>
+          <span className="font-mono text-[12px] text-white/55">21:40</span>
+        </div>
+        <Link href="/courts" className="group mt-5 flex h-12 items-center justify-center gap-2 rounded-full bg-white text-[14px] font-semibold text-ink transition hover:bg-[#3fd6c8]">
+          Book a court, get your key <ArrowRight size={16} className="transition group-hover:translate-x-1" />
         </Link>
       </div>
     </ChapterShell>
@@ -582,7 +595,7 @@ function ConciergeChapter() {
             ask the <span className="text-sage">bay.</span>
           </h2>
           <p data-fade className="mt-5 max-w-md text-[15px] leading-relaxed text-white/85">
-            One conversation for courts, coffee, stays and the club. It checks live availability, prepares the booking and waits for your yes before anything is charged.
+            One conversation for courts, coffee, kit and the club. It checks live availability, prepares the booking and waits for your yes before anything is charged.
           </p>
           <button data-fade onClick={() => openConcierge(seed)} className="group mt-7 flex h-13 items-center gap-2 rounded-full bg-sage px-6 py-3.5 text-[14px] font-semibold text-ink transition hover:bg-white">
             Try it now <ArrowUpRight size={17} className="transition group-hover:rotate-45" />
@@ -623,7 +636,7 @@ function CommandChapter() {
           {[
             ["Click a court", "Schedule, bookings, utilization, maintenance and revenue, on the court itself."],
             ["Click the café", "The live kitchen queue, menu switches, inventory and sales for Sip."],
-            ["Click a suite", "Reservations, housekeeping, guest registration and digital keys."],
+            ["Click the lockers", "Live key windows, kit checks after every session, and who opened which locker."],
           ].map(([t, d]) => (
             <div key={t} className="rounded-[24px] border border-white/10 bg-white/5 p-5">
               <p className="text-[15px] font-semibold text-white">{t}</p>
@@ -673,7 +686,7 @@ function Footer() {
           </div>
         </div>
         <p className="relative mt-12 border-t border-ink/15 pt-5 text-[11.5px] leading-relaxed text-ink/60">
-          Concept demo by Brains AI Solutions. The 3D venue is a conceptual digital twin (layout and court count not surveyed) and will be replaced by an accurate model. Bay Suites are a planned addition. AI features are simulated with demo logic. Prices are illustrative.
+          Concept demo by Brains AI Solutions. The 3D venue is a conceptual digital twin (layout and court count not surveyed) and will be replaced by an accurate model. Kit lockers and door hardware are simulated until selected. AI features are simulated with demo logic. Prices are illustrative.
         </p>
       </div>
     </footer>

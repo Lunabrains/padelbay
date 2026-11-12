@@ -3,12 +3,11 @@
 import { useState } from "react";
 
 // Small SVG charts for the Command Center. Palette validated (dark mode, surface #0a1d20):
-// courts #36a678 · Sip #dc6d34 · stays #5a88e6. Sequential = one hue (sage), light = more.
+// courts #36a678 · Sip #dc6d34 (the extra #5a88e6 step is used for single-series accents). Sequential = one hue (sage), light = more.
 
 export const SERIES = {
   courts: { key: "courts", label: "Courts", color: "#36a678" },
   cafe: { key: "cafe", label: "Sip café", color: "#dc6d34" },
-  stays: { key: "stays", label: "Bay Suites", color: "#5a88e6" },
 } as const;
 
 export interface BarDatum {

@@ -2,16 +2,16 @@
 
 import clsx from "clsx";
 import { useState, type ReactNode } from "react";
-import { ChefHat, Lock, Minus, Plus, Sparkles, Wrench } from "lucide-react";
+import { Check, ChefHat, Lock, Minus, Plus, Sparkles, Wrench } from "lucide-react";
 import { courtLive } from "@/components/three/Stage";
 import { Avatar, Button, Label, SimBadge, Tabs, ZonePanel } from "@/components/ui/kit";
-import { ORDER_FLOW, cancelBooking, orderStage, revokePass, setOrderStage, staffAction } from "@/lib/actions";
+import { ORDER_FLOW, cancelBooking, checkLocker, kitFor, orderStage, setOrderStage, staffAction } from "@/lib/actions";
 import { utilization } from "@/lib/engine/availability";
-import { can, type Permission } from "@/lib/catalog";
+import { KEY_WINDOW_MIN, can, type Permission } from "@/lib/catalog";
 import { useNow, useStaff } from "@/lib/hooks";
-import { cafeRevenue, courtRevenue, mask, occupancy, topItems } from "@/lib/ops";
+import { cafeRevenue, courtRevenue, lockerLive, topItems, type LockerLive } from "@/lib/ops";
 import { useStore } from "@/lib/store";
-import type { OrderStage, Unit } from "@/lib/types";
+import type { OrderStage } from "@/lib/types";
 import { DAY, HOUR, MIN, addDays, atHour, fmtAgo, fmtDate, fmtDayLabel, fmtRange, fmtTime, fmtWeekday, startOfDay } from "@/lib/time";
 import { HBars, Meter, SERIES, StackedBars } from "./charts";
 
@@ -319,7 +319,7 @@ export function CafePanel({ onClose }: { onClose: () => void }) {
                     {list.map((o) => {
                       const c = db.customers.find((x) => x.id === o.customerId);
                       return (
-                        <div key={o.id} className={clsx("rounded-2xl p-3", o.deliverTo.kind === "court" ? "bg-sage/10 ring-1 ring-sage/25" : o.deliverTo.kind === "suite" ? "bg-[#5a88e6]/12 ring-1 ring-[#5a88e6]/30" : "bg-white/5")}>
+                        <div key={o.id} className={clsx("rounded-2xl p-3", o.deliverTo.kind === "court" ? "bg-sage/10 ring-1 ring-sage/25" : "bg-white/5")}>
                           <div className="flex items-center justify-between">
                             <span className="text-[12.5px] font-semibold text-white">#{o.number} · {c?.name.split(" ")[0]}</span>
                             <span className="text-[10.5px] text-white/50">{fmtAgo(o.createdAt, now)}</span>
@@ -437,131 +437,149 @@ export function CafePanel({ onClose }: { onClose: () => void }) {
 }
 
 // ---------------------------------------------------------------------------
-// Bay Suites
+// Kit lockers
 // ---------------------------------------------------------------------------
 
-const HK: Unit["housekeeping"][] = ["clean", "dirty", "inspecting", "out-of-order"];
+const LOCKER_STATE: Record<LockerLive, { label: string; tone: "good" | "warn" | "bad" | "info" | "neutral"; color: string }> = {
+  ready: { label: "Ready", tone: "good", color: "#82be9d" },
+  assigned: { label: "Assigned", tone: "warn", color: "#f6b26b" },
+  active: { label: "Key active", tone: "info", color: "#3fd6c8" },
+  check: { label: "Check kit", tone: "warn", color: "#f28a3b" },
+  maintenance: { label: "Maintenance", tone: "bad", color: "#ef6b5b" },
+};
 
-export function SuitesPanel({ unitId, onClose }: { unitId?: string; onClose: () => void }) {
+export function LockersPanel({ lockerId, onClose, onSelect }: { lockerId?: string; onClose: () => void; onSelect: (id?: string) => void }) {
   const db = useStore((s) => s.db);
   const staff = useStaff();
-  const now = useNow(10_000);
-  const [tab, setTab] = useState<"reservations" | "occupancy" | "housekeeping" | "guests" | "access">("reservations");
+  const now = useNow(5_000);
+  const [tab, setTab] = useState<"lockers" | "keys" | "log">("lockers");
+  const live = db.lockers.map((l) => ({ l, ...lockerLive(db, l, now) }));
+  const counts = (Object.keys(LOCKER_STATE) as LockerLive[]).map((k) => [k, live.filter((x) => x.state === k).length] as const);
+  const sel = live.find((x) => x.l.id === lockerId);
+  const writer = can(staff?.role, "kit:write");
   const today = startOfDay(now);
-  const unit = unitId ? db.units.find((u) => u.id === unitId) : undefined;
-  const stays = db.stays.filter((s) => s.status !== "cancelled" && (!unitId || s.unitId === unitId)).sort((a, b) => a.checkIn - b.checkIn);
-  const pii = can(staff?.role, "guests:pii");
-  const nights = Array.from({ length: 14 }, (_, i) => addDays(today, i));
-  const keys = db.passes.filter((p) => p.kind === "suite");
-  const suiteLogs = db.accessLogs.filter((l) => / door$/.test(l.door)).slice(0, 12);
+  const windows = db.bookings
+    .filter((b) => b.status === "confirmed" && b.lockerId && b.start + (b.durationMin + KEY_WINDOW_MIN) * MIN > now && b.start < today + DAY + 6 * HOUR)
+    .sort((a, b) => a.start - b.start)
+    .slice(0, 30);
+  const logs = db.accessLogs.filter((l) => l.door.startsWith("Locker")).slice(0, 30);
 
   return (
     <ZonePanel
-      kicker="Bay Suites · concept operations"
-      title={unit ? unit.name.toLowerCase() : "bay suites."}
+      kicker="Self-service · rackets & balls"
+      title="kit lockers."
       onBack={onClose}
-      tabs={<Tabs value={tab} onChange={setTab} items={[{ id: "reservations", label: "Reservations", badge: stays.filter((s) => s.status !== "checked-out").length }, { id: "occupancy", label: "Occupancy" }, { id: "housekeeping", label: "Housekeeping" }, { id: "guests", label: "Guests" }, { id: "access", label: "Access" }]} />}
+      tabs={<Tabs value={tab} onChange={setTab} items={[{ id: "lockers", label: "Lockers" }, { id: "keys", label: "Key windows", badge: live.filter((x) => x.state === "active").length }, { id: "log", label: "Access log" }]} />}
     >
-      <Gate perm="stays:read">
-        {tab === "reservations" && (
-          <div className="space-y-1.5">
-            {stays.map((s) => {
-              const c = db.customers.find((x) => x.id === s.customerId);
-              const u = db.units.find((x) => x.id === s.unitId);
-              return (
-                <div key={s.id} className="rounded-2xl bg-white/5 p-3">
-                  <div className="flex items-center justify-between">
-                    <span className="text-[12.5px] font-semibold text-white">{u?.name} · {c?.name}</span>
-                    <Pill tone={s.status === "checked-in" ? "warn" : s.status === "checked-out" ? "neutral" : "good"}>{s.status}</Pill>
-                  </div>
-                  <p className="text-[11.5px] text-white/60">{fmtDate(s.checkIn)} → {fmtDate(s.checkOut)} · ${s.total} {s.packageId ? `· ${db.packages.find((p) => p.id === s.packageId)?.name}` : ""}</p>
-                  <p className="text-[11px] text-white/45">{s.registration ? `Registered · arrival ${s.registration.arrivalTime} · ID verified` : "Registration pending"}{s.keyPassId ? " · smart key issued" : ""}</p>
-                </div>
-              );
-            })}
+      <Gate perm="lockers:read">
+        <div className="space-y-4">
+          <div className="flex flex-wrap gap-1.5">
+            {counts.map(([k, n]) => (
+              <span key={k} className="flex items-center gap-1.5 rounded-full bg-white/6 px-2.5 py-1 text-[11px] text-white/75">
+                <span className="h-2 w-2 rounded-full" style={{ background: LOCKER_STATE[k].color }} /> {LOCKER_STATE[k].label} <span className="font-semibold tabular text-white">{n}</span>
+              </span>
+            ))}
           </div>
-        )}
-        {tab === "occupancy" && (
-          <div className="space-y-3 overflow-x-auto thin-scrollbar">
-            <div className="min-w-[380px]">
-              <div className="flex pl-24">
-                {nights.map((n) => <span key={n} className="flex-1 text-center text-[9px] text-white/45">{new Date(n).getDate()}</span>)}
-              </div>
-              {db.units.map((u) => (
-                <div key={u.id} className="mt-[2px] flex items-center">
-                  <span className="w-24 shrink-0 truncate text-[10.5px] text-white/65">{u.name}</span>
-                  {nights.map((n) => {
-                    const s = db.stays.find((x) => x.unitId === u.id && x.status !== "cancelled" && x.checkIn < n + DAY && x.checkOut > n + 12 * HOUR);
-                    return <div key={n} className="flex-1 px-[1px]"><div className="h-5 rounded-[4px]" title={s ? db.customers.find((c) => c.id === s.customerId)?.name : "Free"} style={{ background: s ? "#5a88e6" : "rgba(255,255,255,0.05)" }} /></div>;
-                  })}
-                </div>
-              ))}
-              <div className="mt-2 flex items-center pl-24">
-                {nights.map((n) => <span key={n} className="flex-1 text-center text-[9px] tabular text-white/55">{Math.round(occupancy(db, n) * 100)}</span>)}
-              </div>
-              <p className="mt-1 pl-24 text-[10px] text-white/40">% occupancy per night · simulated reservations</p>
-            </div>
-          </div>
-        )}
-        {tab === "housekeeping" && (
-          <div className="space-y-2">
-            {db.units.map((u) => (
-              <div key={u.id} className="rounded-2xl bg-white/5 p-3">
-                <div className="flex items-center justify-between">
-                  <span className="text-[12.5px] font-semibold text-white">{u.name}</span>
-                  <Pill tone={u.housekeeping === "clean" ? "good" : u.housekeeping === "dirty" ? "bad" : "warn"}>{u.housekeeping}</Pill>
-                </div>
-                {can(staff?.role, "housekeeping:write") && (
-                  <div className="mt-2 flex gap-1">
-                    {HK.map((h) => (
-                      <button key={h} onClick={() => staffAction(staff!.id, `${u.name} → ${h}`, (d) => { d.units.find((x) => x.id === u.id)!.housekeeping = h; if (h === "clean") d.tasks.filter((t) => t.refId === u.id && t.status !== "done").forEach((t) => (t.status = "done")); }, "housekeeping.status", "unit")} className={clsx("flex-1 rounded-full py-1 text-[10px] font-semibold capitalize", u.housekeeping === h ? "bg-white text-ink" : "bg-white/8 text-white/70")}>
-                        {h.replace("-", " ")}
+
+          {tab === "lockers" && (
+            <>
+              {(["Hall", "Sea side"] as const).map((bank) => (
+                <div key={bank}>
+                  <Label>{bank} bank</Label>
+                  <div className="mt-1.5 grid grid-cols-6 gap-1.5">
+                    {live.filter((x) => x.l.bank === bank).map(({ l, state }) => (
+                      <button
+                        key={l.id}
+                        onClick={() => onSelect(l.id)}
+                        className={clsx("flex aspect-square flex-col items-center justify-center rounded-xl text-[12px] font-bold tabular transition", lockerId === l.id ? "ring-2 ring-white" : "hover:brightness-110")}
+                        style={{ background: `${LOCKER_STATE[state].color}33`, color: LOCKER_STATE[state].color }}
+                        title={`Locker ${l.number} · ${LOCKER_STATE[state].label}`}
+                      >
+                        {l.number}
+                        <span className="mt-0.5 h-1 w-4 rounded-full" style={{ background: LOCKER_STATE[state].color }} />
                       </button>
                     ))}
                   </div>
-                )}
-              </div>
-            ))}
-          </div>
-        )}
-        {tab === "guests" && (
-          <div className="space-y-2">
-            {!pii && <p className="rounded-2xl bg-white/5 p-3 text-[11.5px] text-white/60"><Lock size={12} className="mr-1 inline" /> Contact details are masked for your role (needs guests:pii).</p>}
-            {stays.filter((s) => s.status !== "checked-out").map((s) => {
-              const c = db.customers.find((x) => x.id === s.customerId);
-              return (
-                <div key={s.id} className="rounded-2xl bg-white/5 p-3">
-                  <p className="text-[12.5px] font-semibold text-white">{c?.name} · {db.units.find((u) => u.id === s.unitId)?.name}</p>
-                  <p className="text-[11.5px] text-white/60">{mask(c?.phone ?? "", pii)} · {mask(c?.email ?? "", pii)}</p>
-                  <p className="mt-1 text-[11px] text-white/50">Guests: {s.guests.map((g) => g.name).join(", ")}</p>
                 </div>
-              );
-            })}
-          </div>
-        )}
-        {tab === "access" && (
-          <div className="space-y-2">
-            <Label>Smart keys</Label>
-            {keys.length === 0 && <p className="text-[11.5px] text-white/45">No digital keys issued yet. They appear at check-in.</p>}
-            {keys.map((k) => (
-              <div key={k.id} className="flex items-center justify-between rounded-2xl bg-white/5 px-3 py-2.5">
-                <span>
-                  <span className="block text-[12.5px] font-semibold text-white">{k.door}</span>
-                  <span className="block text-[11px] text-white/55">{db.customers.find((c) => c.id === k.holderId)?.name} · until {fmtDate(k.validTo)}</span>
-                </span>
-                {k.status === "active" && can(staff?.role, "access:manage") ? (
-                  <button onClick={() => revokePass(k.id, staff!.id)} className="rounded-full bg-danger/20 px-2.5 py-1 text-[10.5px] font-semibold text-danger">Revoke</button>
-                ) : (
-                  <Pill tone={k.status === "active" ? "good" : "neutral"}>{k.status}</Pill>
-                )}
-              </div>
-            ))}
-            <Label className="pt-2">Recent door events</Label>
-            {suiteLogs.map((l) => (
-              <p key={l.id} className="text-[11.5px] text-white/65">{fmtTime(l.at)} · {l.door} · <span className={l.result === "granted" ? "text-sage" : "text-danger"}>{l.result}</span> · {l.method}</p>
-            ))}
-          </div>
-        )}
+              ))}
+              {sel ? (
+                <div className="rounded-[22px] border border-white/10 bg-ink/40 p-4 text-[12px]">
+                  <div className="flex items-center justify-between">
+                    <p className="text-[15px] font-semibold text-white">Locker {sel.l.number} · {sel.l.bank}</p>
+                    <Pill tone={LOCKER_STATE[sel.state].tone}>{LOCKER_STATE[sel.state].label}</Pill>
+                  </div>
+                  <p className="mt-1 text-white/60">Kit: {sel.l.kit.rackets} rackets · {sel.l.kit.balls} balls · last checked {fmtAgo(sel.l.lastCheckedAt, now)}</p>
+                  {sel.l.note && <p className="mt-1 text-gold">{sel.l.note}</p>}
+                  {[sel.booking, sel.next].filter(Boolean).map((b, i) => {
+                    const c = db.customers.find((x) => x.id === b!.customerId);
+                    const from = b!.start - KEY_WINDOW_MIN * MIN;
+                    const to = b!.start + (b!.durationMin + KEY_WINDOW_MIN) * MIN;
+                    return (
+                      <div key={b!.id} className="mt-2 rounded-xl bg-white/5 p-2.5">
+                        <p className="text-[10.5px] uppercase tracking-wider text-white/45">{i === 0 && sel.booking ? (sel.state === "active" ? "Key active now" : "Last session") : "Next session"}</p>
+                        <p className="font-semibold text-white">{c?.name} · {db.courts.find((x) => x.id === b!.courtId)?.short}</p>
+                        <p className="text-white/60">{fmtDayLabel(b!.start, now)} · key {fmtTime(from)} → {fmtTime(to)} · {kitFor(b!).rackets} rackets</p>
+                      </div>
+                    );
+                  })}
+                  {writer ? (
+                    <div className="mt-3 grid grid-cols-2 gap-2">
+                      <Button variant="sage" className="h-9 text-[12px]" onClick={() => checkLocker(sel.l.id, staff!.id, "ready")}>
+                        <Check size={13} /> Kit checked
+                      </Button>
+                      {sel.l.status === "maintenance" ? (
+                        <Button variant="ghost" className="h-9 text-[12px]" onClick={() => checkLocker(sel.l.id, staff!.id, "ready")}>Back in service</Button>
+                      ) : (
+                        <Button variant="ghost" className="h-9 text-[12px]" onClick={() => checkLocker(sel.l.id, staff!.id, "maintenance", "Taken out of service by staff")}>
+                          <Wrench size={13} /> Maintenance
+                        </Button>
+                      )}
+                    </div>
+                  ) : (
+                    <p className="mt-3 text-[11px] text-white/45">Kit actions need the kit:write permission.</p>
+                  )}
+                </div>
+              ) : (
+                <p className="text-[11.5px] text-white/45">Tap a locker for its kit, key windows and actions.</p>
+              )}
+            </>
+          )}
+
+          {tab === "keys" && (
+            <div className="space-y-1.5">
+              <p className="text-[11px] text-white/45">Every paid booking: locker + court gate, open from {KEY_WINDOW_MIN} min before to {KEY_WINDOW_MIN} min after.</p>
+              {windows.map((b) => {
+                const c = db.customers.find((x) => x.id === b.customerId);
+                const from = b.start - KEY_WINDOW_MIN * MIN;
+                const to = b.start + (b.durationMin + KEY_WINDOW_MIN) * MIN;
+                const activeNow = now >= from && now <= to;
+                const locker = db.lockers.find((l) => l.id === b.lockerId);
+                return (
+                  <button key={b.id} onClick={() => { setTab("lockers"); onSelect(b.lockerId); }} className={clsx("flex w-full items-center gap-3 rounded-2xl px-3 py-2 text-left", activeNow ? "bg-[#3fd6c8]/12 ring-1 ring-[#3fd6c8]/40" : "bg-white/5 hover:bg-white/8")}>
+                    <span className="w-10 text-center text-[13px] font-bold tabular text-white">{locker?.number}</span>
+                    <span className="flex-1">
+                      <span className="block text-[12.5px] font-semibold text-white">{c?.name} · {db.courts.find((x) => x.id === b.courtId)?.short}</span>
+                      <span className="block font-mono text-[10.5px] text-white/55">{fmtDayLabel(b.start, now)} {fmtTime(from)} → {fmtTime(to)}</span>
+                    </span>
+                    <Pill tone={activeNow ? "info" : "neutral"}>{activeNow ? "Active" : `in ${Math.max(1, Math.round((from - now) / MIN))} min`}</Pill>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+
+          {tab === "log" && (
+            <div className="space-y-1">
+              {logs.length === 0 && <p className="text-[12px] text-white/45">No locker openings yet.</p>}
+              {logs.map((l) => (
+                <p key={l.id} className="text-[11.5px] text-white/70">
+                  {fmtTime(l.at)} · {l.door} · {db.customers.find((c) => c.id === l.holderId)?.name ?? "Unknown"} · <span className={l.result === "granted" ? "text-sage" : "text-danger"}>{l.result}</span>
+                  {l.reason ? <span className="text-white/45"> · {l.reason}</span> : null}
+                </p>
+              ))}
+            </div>
+          )}
+        </div>
       </Gate>
     </ZonePanel>
   );

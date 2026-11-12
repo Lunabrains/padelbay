@@ -1,6 +1,6 @@
 "use client";
 
-import { RoundedBox, useTexture } from "@react-three/drei";
+import { useTexture } from "@react-three/drei";
 import { useFrame } from "@react-three/fiber";
 import { useMemo, useRef } from "react";
 import * as THREE from "three";
@@ -234,117 +234,113 @@ export function ClubDeck({ night, active }: { night: boolean; active: boolean })
 }
 
 // ---------------------------------------------------------------------------
-// Bay Suites: planned accommodation, shown as a concept.
+// Kit lockers: two banks of 12 smart lockers with rackets and balls, opened by the
+// booking's digital key from 10 minutes before until 10 minutes after the session.
 // ---------------------------------------------------------------------------
-export const UNIT_POS: Record<string, [number, number, number]> = {
-  sp1: [-30, 0, -34],
-  sp2: [-30, 0, -26],
-  sp3: [-30, 0, -18],
-  sp4: [-30, 0, -10],
-  l1: [16, 0, -22],
-  l2: [28, 0, -22],
-  v1: [-30, 0, 6],
+export const LOCKER_SITE: [number, number, number] = [-4, 0, -21];
+
+const LOCKER_TONE: Record<string, string> = {
+  ready: "#82be9d",
+  assigned: "#f6b26b",
+  active: "#3fd6c8",
+  check: "#f28a3b",
+  maintenance: "#ef6b5b",
 };
 
-export function Suites({
-  selectedId,
-  status,
+export function LockerPavilion({
+  lockers,
+  focusId,
   night,
   onSelect,
   onHover,
 }: {
-  selectedId?: string;
-  status: Record<string, "free" | "occupied" | "arriving" | "dirty">;
+  lockers: { id: string; number: string; bank: string; state: string }[];
+  focusId?: string;
   night: boolean;
   onSelect?: (id: string) => void;
   onHover?: (id: string, on: boolean) => void;
 }) {
   const m = mats();
-  const tone = (id: string) => (status[id] === "occupied" ? "#ffb871" : status[id] === "arriving" ? "#f6d38b" : status[id] === "dirty" ? "#ef6b5b" : "#bfe6d0");
+  const pulse = useRef<THREE.Group>(null);
+  useFrame(({ clock }) => {
+    if (pulse.current) pulse.current.children.forEach((c, i) => ((c as THREE.Mesh).scale.y = 1 + Math.sin(clock.getElapsedTime() * 4 + i) * 0.25));
+  });
+  const banks = ["Hall", "Sea side"] as const;
   return (
-    <group>
-      {/* boardwalk across the sand */}
-      <mesh position={[-24, 0.32, -22]} receiveShadow>
-        <boxGeometry args={[2.2, 0.14, 28]} />
-        <meshStandardMaterial color="#b98a5e" roughness={0.9} />
+    <group position={LOCKER_SITE}>
+      <mesh position={[0, 0.06, 0]} receiveShadow material={m.stone}>
+        <boxGeometry args={[17, 0.12, 6.4]} />
       </mesh>
-      <mesh position={[-20.5, 0.32, -10]} receiveShadow>
-        <boxGeometry args={[9, 0.14, 2]} />
-        <meshStandardMaterial color="#b98a5e" roughness={0.9} />
+      {/* timber canopy on slim white columns, like the Sip pavilion */}
+      <mesh position={[0, 3.45, 0.6]} castShadow material={m.timber}>
+        <boxGeometry args={[17.6, 0.28, 5.4]} />
       </mesh>
-      {(["sp1", "sp2", "sp3", "sp4"] as const).map((id) => {
-        const [x, , z] = UNIT_POS[id];
-        const sel = selectedId === id;
+      {[-8.2, 8.2].flatMap((x) => [-1.9, 3.1].map((z) => [x, z])).map(([x, z], i) => (
+        <mesh key={i} position={[x, 1.72, z]} material={m.white} castShadow>
+          <cylinderGeometry args={[0.08, 0.08, 3.3, 10]} />
+        </mesh>
+      ))}
+      {banks.map((bank, bi) => {
+        const list = lockers.filter((l) => l.bank === bank);
+        const x0 = bi === 0 ? -7.6 : 0.4;
         return (
-          <group key={id} position={[x, 0, z]} {...hoverProps(onSelect ? () => onSelect(id) : undefined, onHover ? (on) => onHover(id, on) : undefined)}>
-            {[[-2, -1.4], [2, -1.4], [-2, 1.4], [2, 1.4]].map(([sx, sz], i) => (
-              <mesh key={i} position={[sx, 0.6, sz]} material={m.steel}>
-                <cylinderGeometry args={[0.08, 0.08, 1.2, 8]} />
-              </mesh>
-            ))}
-            <mesh position={[0, 1.25, 0]} castShadow receiveShadow>
-              <boxGeometry args={[6.4, 0.18, 4.6]} />
-              <meshStandardMaterial color="#b98a5e" roughness={0.85} />
+          <group key={bank} position={[x0, 0, -1.6]}>
+            <mesh position={[3.6, 1.3, -0.25]} castShadow receiveShadow>
+              <boxGeometry args={[7.6, 2.6, 0.6]} />
+              <meshStandardMaterial color={night ? "#16292c" : "#e9e4da"} roughness={0.6} />
             </mesh>
-            <RoundedBox args={[4.6, 2.7, 3.6]} radius={1.2} smoothness={5} position={[0.6, 2.7, 0]} castShadow material={m.concept} />
-            <mesh position={[-1.75, 2.7, 0]} rotation={[0, -Math.PI / 2, 0]}>
-              <planeGeometry args={[2.6, 1.5]} />
-              <meshStandardMaterial color={tone(id)} emissive={tone(id)} emissiveIntensity={night ? 1.4 : 0.45} />
-            </mesh>
-            <mesh position={[0, 0.03, 0]} rotation={[-Math.PI / 2, 0, 0]}>
-              <ringGeometry args={[3.9, 4.1, 48]} />
-              <meshBasicMaterial color={sel ? "#82be9d" : "#ffffff"} transparent opacity={sel ? 0.95 : 0.25} toneMapped={false} />
-            </mesh>
+            {list.map((l, i) => {
+              const col = i % 6;
+              const row = Math.floor(i / 6);
+              const sel = focusId === l.id;
+              const tone = LOCKER_TONE[l.state] ?? "#82be9d";
+              return (
+                <group
+                  key={l.id}
+                  position={[0.6 + col * 1.2, 0.75 + (1 - row) * 1.15, 0.07]}
+                  onClick={(e) => {
+                    if (e.delta > 6 || !onSelect) return;
+                    e.stopPropagation();
+                    onSelect(l.id);
+                  }}
+                  onPointerOver={(e) => {
+                    e.stopPropagation();
+                    onHover?.(l.id, true);
+                    if (onSelect) document.body.style.cursor = "pointer";
+                  }}
+                  onPointerOut={() => {
+                    onHover?.(l.id, false);
+                    document.body.style.cursor = "";
+                  }}
+                >
+                  <mesh castShadow>
+                    <boxGeometry args={[1.08, 1.02, 0.12]} />
+                    <meshStandardMaterial color={sel ? "#ffffff" : night ? "#1f3a3e" : "#235c62"} roughness={0.35} metalness={0.25} emissive={sel ? tone : "#000000"} emissiveIntensity={sel ? 0.35 : 0} />
+                  </mesh>
+                  <mesh position={[0.36, 0.3, 0.07]}>
+                    <boxGeometry args={[0.18, 0.05, 0.02]} />
+                    <meshBasicMaterial color={tone} toneMapped={false} />
+                  </mesh>
+                  <mesh position={[0.36, -0.05, 0.07]}>
+                    <boxGeometry args={[0.05, 0.22, 0.03]} />
+                    <meshStandardMaterial color="#d9d4ca" metalness={0.7} roughness={0.3} />
+                  </mesh>
+                </group>
+              );
+            })}
           </group>
         );
       })}
-      {(["l1", "l2"] as const).map((id) => {
-        const [x, , z] = UNIT_POS[id];
-        const sel = selectedId === id;
-        return (
-          <group key={id} position={[x, 0, z]} {...hoverProps(onSelect ? () => onSelect(id) : undefined, onHover ? (on) => onHover(id, on) : undefined)}>
-            <mesh position={[0, 3.2, 0]} castShadow receiveShadow material={m.concept}>
-              <boxGeometry args={[9, 6.4, 6]} />
-            </mesh>
-            <mesh position={[0, 4.6, 3.05]}>
-              <planeGeometry args={[7.6, 2.4]} />
-              <meshStandardMaterial color={tone(id)} emissive={tone(id)} emissiveIntensity={night ? 1.2 : 0.4} />
-            </mesh>
-            <mesh position={[0, 3.2, 3.6]} castShadow material={m.timber}>
-              <boxGeometry args={[9.4, 0.25, 1.4]} />
-            </mesh>
-            <mesh position={[0, 0.02, 0]} rotation={[-Math.PI / 2, 0, 0]}>
-              <ringGeometry args={[6.2, 6.4, 48]} />
-              <meshBasicMaterial color={sel ? "#82be9d" : "#ffffff"} transparent opacity={sel ? 0.95 : 0.2} toneMapped={false} />
-            </mesh>
-          </group>
-        );
-      })}
-      {(() => {
-        const [x, , z] = UNIT_POS.v1;
-        const sel = selectedId === "v1";
-        return (
-          <group position={[x, 0, z]} {...hoverProps(onSelect ? () => onSelect("v1") : undefined, onHover ? (on) => onHover("v1", on) : undefined)}>
-            <mesh position={[0, 0.3, 0]} receiveShadow>
-              <boxGeometry args={[14, 0.6, 10]} />
-              <meshStandardMaterial color="#d9c6a5" roughness={0.9} />
-            </mesh>
-            <RoundedBox args={[8, 3.2, 6]} radius={0.8} smoothness={4} position={[2, 2.2, 0]} castShadow material={m.concept} />
-            <mesh position={[-2.05, 2.2, 0]} rotation={[0, -Math.PI / 2, 0]}>
-              <planeGeometry args={[5, 2]} />
-              <meshStandardMaterial color={tone("v1")} emissive={tone("v1")} emissiveIntensity={night ? 1.3 : 0.4} />
-            </mesh>
-            <mesh position={[-4.6, 0.62, 0]} rotation={[-Math.PI / 2, 0, 0]}>
-              <planeGeometry args={[3.4, 6]} />
-              <meshStandardMaterial color="#4fc3c8" emissive="#2aa8b0" emissiveIntensity={0.35} roughness={0.1} metalness={0.3} />
-            </mesh>
-            <mesh position={[0, 0.03, 0]} rotation={[-Math.PI / 2, 0, 0]}>
-              <ringGeometry args={[8.2, 8.4, 64]} />
-              <meshBasicMaterial color={sel ? "#82be9d" : "#ffffff"} transparent opacity={sel ? 0.95 : 0.2} toneMapped={false} />
-            </mesh>
-          </group>
-        );
-      })()}
+      {/* racket rack and ball tubes on display */}
+      <group ref={pulse} position={[0, 0.12, 2.2]}>
+        {[-1.2, -0.4, 0.4, 1.2].map((x) => (
+          <mesh key={x} position={[x, 0.45, 0]}>
+            <cylinderGeometry args={[0.07, 0.07, 0.9, 10]} />
+            <meshStandardMaterial color="#d8f25a" emissive="#c9ef3a" emissiveIntensity={night ? 0.6 : 0.15} />
+          </mesh>
+        ))}
+      </group>
+      {night && <pointLight position={[0, 3, 1]} intensity={14} distance={14} color="#bff3ff" />}
     </group>
   );
 }

@@ -38,7 +38,6 @@ export default function Cafe() {
   const [trackId, setTrackId] = useState<string | null>(null);
 
   const bookings = customer ? upcomingFor(db, customer.id, now).filter((b) => b.start - now < 36 * HOUR).slice(0, 3) : [];
-  const stay = customer ? db.stays.find((s) => s.customerId === customer.id && s.status === "checked-in") : undefined;
 
   useEffect(() => {
     const q = new URLSearchParams(window.location.search);
@@ -55,9 +54,8 @@ export default function Cafe() {
 
   useEffect(() => {
     if (deliver === "pickup" && bookings[0]) setDeliver(`court:${bookings[0].id}`);
-    else if (deliver === "pickup" && stay) setDeliver(`suite:${stay.id}`);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [bookings.length, stay?.id]);
+  }, [bookings.length]);
 
   const items = db.menu.filter((m) => m.category === cat);
   const cartTotal = Math.round(cart.reduce((s, l) => s + l.qty * l.unitPrice, 0) * 100) / 100;
@@ -71,11 +69,6 @@ export default function Cafe() {
       const b = db.bookings.find((x) => x.id === deliver.slice(6));
       const c = db.courts.find((x) => x.id === b?.courtId);
       if (b && c) return { kind: "court", refId: c.id, label: c.short };
-    }
-    if (deliver.startsWith("suite:")) {
-      const s = db.stays.find((x) => x.id === deliver.slice(6));
-      const u = db.units.find((x) => x.id === s?.unitId);
-      if (s && u) return { kind: "suite", refId: s.id, label: u.name };
     }
     return { kind: "pickup", label: "Pickup at Sip" };
   };
@@ -192,7 +185,6 @@ export default function Cafe() {
                       <DeliverOption key={id} on={deliver === id} onClick={() => setDeliver(id)} title={`${c.short} gate`} sub={`${fmtDayLabel(b.start, now)} ${fmtTime(b.start)} · we bring it to your court`} icon="🎾" />
                     );
                   })}
-                  {stay && <DeliverOption on={deliver === `suite:${stay.id}`} onClick={() => setDeliver(`suite:${stay.id}`)} title={db.units.find((u) => u.id === stay.unitId)?.name ?? "Your suite"} sub="Room delivery · charge to your suite" icon="🛏️" />}
                   <DeliverOption on={deliver === "pickup"} onClick={() => setDeliver("pickup")} title="Pickup at Sip" sub="We'll ping you when it's ready" icon="☕" />
                 </div>
               </div>
@@ -200,7 +192,7 @@ export default function Cafe() {
                 <div>
                   <Label>Pay with</Label>
                   <div className="mt-2 flex flex-wrap gap-1.5">
-                    {["Apple Pay", "Card •••• 4242", ...(stay ? ["Charge to suite"] : [])].map((m) => (
+                    {["Apple Pay", "Card •••• 4242"].map((m) => (
                       <button key={m} onClick={() => setMethod(m)} className={clsx("rounded-full px-3.5 py-2 text-[12px] font-medium transition", method === m ? "bg-white text-ink" : "bg-white/8 text-white/75")}>
                         {m}
                       </button>

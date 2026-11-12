@@ -11,7 +11,8 @@ import { pick, useStage } from "@/lib/stage";
 import { useStore } from "@/lib/store";
 import type { DB, TierId } from "@/lib/types";
 import { MIN, fmtTime } from "@/lib/time";
-import { ClubDeck, Hall, PEDESTALS, SipPavilion, Suites, UNIT_POS } from "./Buildings";
+import { ClubDeck, Hall, LOCKER_SITE, LockerPavilion, PEDESTALS, SipPavilion } from "./Buildings";
+import { lockerLive } from "@/lib/ops";
 import { Character } from "./Characters";
 import { Court, type CourtState } from "./Court";
 import { POSES, rig } from "./rig";
@@ -149,19 +150,12 @@ function Scene() {
   const ops = mode === "ops";
 
   const courts = useMemo(() => Object.keys(COURT_POS).map((id) => courtLive(db, id, now)), [db, now]);
-  const unitStatus = useMemo(() => {
-    const out: Record<string, "free" | "occupied" | "arriving" | "dirty"> = {};
-    for (const u of db.units) {
-      const stay = db.stays.find((s) => s.unitId === u.id && s.status === "checked-in");
-      const arriving = db.stays.find((s) => s.unitId === u.id && s.status === "reserved" && s.checkIn - now < 24 * 60 * MIN && s.checkIn > now - 12 * 60 * MIN);
-      out[u.id] = stay ? "occupied" : u.housekeeping === "dirty" ? "dirty" : arriving ? "arriving" : "free";
-    }
-    return out;
-  }, [db, now]);
+  const lockers = useMemo(() => db.lockers.map((l) => ({ id: l.id, number: l.number, bank: l.bank, state: lockerLive(db, l, now).state })), [db, now]);
+  const activeKeys = lockers.filter((l) => l.state === "active").length;
   const queue = useMemo(() => db.orders.filter((o) => !["delivered", "cancelled"].includes(orderStage(o, now))).length, [db, now]);
 
   const showCourtLabels = hydrated && ["courts", "court", "command", "community", "overview"].includes(zone);
-  const showSuiteLabels = hydrated && (zone === "suites" || zone === "command");
+  const showLockerLabel = hydrated && ["lockers", "command", "courts", "overview"].includes(zone);
   const cutaway = ["courts", "court", "command", "community"].includes(zone);
 
   return (
@@ -193,11 +187,11 @@ function Scene() {
           <Character tier={p.id as TierId} scale={p.id === "legend" ? 1.15 : 1} selected={zone === "club" && focusId === p.id} onSelect={() => pick("tier", p.id)} />
         </group>
       ))}
-      <Suites
-        selectedId={zone === "suites" || ops ? focusId : undefined}
-        status={unitStatus}
+      <LockerPavilion
+        lockers={lockers}
+        focusId={zone === "lockers" || ops ? focusId : undefined}
         night={night}
-        onSelect={(id) => pick("suite", id)}
+        onSelect={(id) => pick("locker", id)}
         onHover={(id, on) => set({ hovered: on ? id : undefined })}
       />
 
@@ -219,22 +213,16 @@ function Scene() {
       {hydrated && (zone === "cafe" || ops || zone === "overview") && (
         <Label position={[-9, 8, 24]} title="Sip café" sub={ops ? `${queue} order${queue === 1 ? "" : "s"} in the kitchen` : "Specialty coffee · open till midnight"} tone="#c46a3a" onClick={() => pick("cafe", "cafe")} active={focusId === "cafe"} />
       )}
-      {showSuiteLabels &&
-        db.units.map((u) => {
-          const [x, , z] = UNIT_POS[u.id];
-          const st = unitStatus[u.id];
-          return (
-            <Label
-              key={u.id}
-              position={[x, u.type === "loft" ? 8.5 : 5.6, z]}
-              title={u.name}
-              sub={ops ? (st === "occupied" ? "Occupied" : st === "arriving" ? "Arrival today" : st === "dirty" ? "Needs turnover" : "Ready") : `Planned · from $${u.nightly}/night`}
-              tone={st === "occupied" ? "#f6b26b" : st === "dirty" ? "#ef6b5b" : "#82be9d"}
-              active={focusId === u.id}
-              onClick={() => pick("suite", u.id)}
-            />
-          );
-        })}
+      {showLockerLabel && (
+        <Label
+          position={[LOCKER_SITE[0], 5.6, LOCKER_SITE[2]]}
+          title="Kit lockers"
+          sub={ops ? `${activeKeys} key${activeKeys === 1 ? "" : "s"} active · ${lockers.filter((l) => l.state === "check").length} to check` : "Rackets & balls · opens with your key"}
+          tone="#3fd6c8"
+          onClick={() => pick("locker", "all")}
+          active={zone === "lockers"}
+        />
+      )}
       {hydrated && zone === "club" &&
         PEDESTALS.map((p) => {
           const t = TIERS.find((x) => x.id === p.id)!;

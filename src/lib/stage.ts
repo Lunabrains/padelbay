@@ -11,7 +11,7 @@ export type Zone =
   | "court"
   | "cafe"
   | "club"
-  | "suites"
+  | "lockers"
   | "community"
   | "command";
 
@@ -43,7 +43,7 @@ export const useStage = create<StageState>((set) => ({
 }));
 
 /** Facility clicks from the 3D world are routed through here so each shell can decide what they open. */
-export type PickHandler = (kind: "court" | "cafe" | "suite" | "club" | "tier" | "hall", id: string) => boolean | void;
+export type PickHandler = (kind: "court" | "cafe" | "locker" | "club" | "tier" | "hall", id: string) => boolean | void;
 // Handlers stack: the innermost screen gets first refusal (return true to consume the pick).
 const handlers: PickHandler[] = [];
 export function onPick(fn: PickHandler) {

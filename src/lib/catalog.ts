@@ -69,7 +69,7 @@ export const TIERS: Tier[] = [
     courtDiscount: 0.15,
     bookAheadDays: 14,
     freeCancelHours: 3,
-    privileges: ["15% off every court booking", "Book up to 14 days ahead", "Two guest passes every month", "First access to Bay Suites", "Legend lounge on the club deck"],
+    privileges: ["15% off every court booking", "Book up to 14 days ahead", "Two guest passes every month", "A pro racket reserved in your locker", "Legend lounge on the club deck"],
   },
 ];
 
@@ -92,7 +92,7 @@ export interface RewardDef {
   description: string;
   points: number;
   minTier?: TierId;
-  where: "Sip" | "Front desk" | "Courts" | "Bay Suites";
+  where: "Sip" | "Front desk" | "Courts" | "Lockers";
   emoji: string;
 }
 
@@ -105,7 +105,7 @@ export const REWARDS: RewardDef[] = [
   { id: "rw-guest", name: "Guest pass", description: "Bring a friend to one session free", points: 450, minTier: "challenger", where: "Front desk", emoji: "🎟️" },
   { id: "rw-tumbler", name: "Sip tumbler", description: "Insulated, refills 10% off forever", points: 600, minTier: "challenger", where: "Sip", emoji: "🥤" },
   { id: "rw-clinic", name: "Private sunset clinic", description: "60 min with a coach for you and three friends", points: 2400, minTier: "elite", where: "Courts", emoji: "🌅" },
-  { id: "rw-night", name: "A night at Bay Suites", description: "Sea Pod, sunset deck, breakfast for two (when open)", points: 5000, minTier: "legend", where: "Bay Suites", emoji: "🌊" },
+  { id: "rw-pro", name: "Pro racket week", description: "A pro-level racket waiting in your locker all week", points: 3200, minTier: "legend", where: "Lockers", emoji: "🏆" },
 ];
 
 /** Stable, human-friendly member number from an id. */
@@ -122,7 +122,11 @@ export function referralCode(name: string, id: string) {
 export function tierRank(t: TierId) {
   return ["rookie", "challenger", "elite", "legend"].indexOf(t);
 }
-export const POINTS_PER_DOLLAR = { courts: 1, cafe: 2, stays: 1 } as const;
+export const POINTS_PER_DOLLAR = { courts: 1, cafe: 2 } as const;
+
+/** The digital key for a paid booking opens its kit locker and court gate from 10 minutes before until 10 minutes after the session. */
+export const KEY_WINDOW_MIN = 10;
+export const LOCKER_COUNT = 24;
 
 export interface AchievementDef {
   id: string;
@@ -135,7 +139,7 @@ export interface AchievementDef {
 export const ACHIEVEMENTS: AchievementDef[] = [
   { id: "first-serve", name: "First Serve", description: "Book your first court at Padel Bay", points: 50, icon: "Sparkles" },
   { id: "sip-and-play", name: "Sip & Play", description: "Order from Sip straight to your court", points: 50, icon: "Coffee" },
-  { id: "key-holder", name: "Key Holder", description: "Open a gate with your digital pass", points: 30, icon: "KeyRound" },
+  { id: "key-holder", name: "Key Holder", description: "Open your kit locker with your digital key", points: 30, icon: "KeyRound" },
   { id: "ask-the-bay", name: "Ask the Bay", description: "Plan something with the AI concierge", points: 30, icon: "MessageCircle" },
   { id: "squad-up", name: "Squad Up", description: "Invite three players to one booking", points: 60, icon: "Users" },
   { id: "open-court", name: "Open Court", description: "Host or join an open match", points: 60, icon: "Swords" },
@@ -143,7 +147,7 @@ export const ACHIEVEMENTS: AchievementDef[] = [
   { id: "night-owl", name: "Night Owl", description: "Play a session after 9pm", points: 40, icon: "Moon" },
   { id: "regular", name: "The Regular", description: "Set up a weekly recurring booking", points: 120, icon: "Repeat" },
   { id: "bracket-ready", name: "Bracket Ready", description: "Register for a Padel Bay tournament", points: 80, icon: "Trophy" },
-  { id: "bay-sleeper", name: "Bay Sleeper", description: "Check in to Bay Suites", points: 150, icon: "BedDouble" },
+  { id: "on-time", name: "Right On Time", description: "Open your locker within its 10-minute key window", points: 40, icon: "Timer" },
 ];
 
 export const SEASON = {
@@ -153,7 +157,7 @@ export const SEASON = {
     { tier: "rookie" as TierId, reward: "Padel Bay grip pack" },
     { tier: "challenger" as TierId, reward: "Sip tumbler + 2 free smoothies" },
     { tier: "elite" as TierId, reward: "Private sunset clinic for four" },
-    { tier: "legend" as TierId, reward: "Signed racket + Bay Suites night" },
+    { tier: "legend" as TierId, reward: "Signed racket + a season of free kit" },
   ],
 };
 
@@ -332,9 +336,9 @@ export const PERMISSIONS = [
   "cafe:write",
   "menu:write",
   "inventory:write",
-  "stays:read",
-  "stays:write",
-  "housekeeping:write",
+  "lockers:read",
+  "lockers:write",
+  "kit:write",
   "guests:pii",
   "access:manage",
   "crm:read",
@@ -354,7 +358,7 @@ export const ROLE_LABEL: Record<StaffRole, string> = {
   gm: "Owner · General Manager",
   frontdesk: "Front Desk",
   cafe: "Sip Café Lead",
-  housekeeping: "Housekeeping",
+  housekeeping: "Facilities & Kit",
   marketing: "Marketing & CRM",
 };
 
@@ -364,8 +368,8 @@ export const ROLE_PERMISSIONS: Record<StaffRole, Permission[]> = {
     "courts:read",
     "courts:write",
     "cafe:read",
-    "stays:read",
-    "stays:write",
+    "lockers:read",
+    "lockers:write",
     "guests:pii",
     "access:manage",
     "crm:read",
@@ -373,7 +377,7 @@ export const ROLE_PERMISSIONS: Record<StaffRole, Permission[]> = {
     "analytics:read",
   ],
   cafe: ["cafe:read", "cafe:write", "menu:write", "inventory:write", "courts:read", "tasks:write"],
-  housekeeping: ["stays:read", "housekeeping:write", "tasks:write"],
+  housekeeping: ["lockers:read", "lockers:write", "kit:write", "tasks:write"],
   marketing: ["crm:read", "marketing:write", "analytics:read", "membership:write", "courts:read", "cafe:read", "ai:apply"],
 };
 

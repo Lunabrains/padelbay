@@ -1,6 +1,6 @@
 import { churnRisk } from "./ai";
-import { tierFor } from "./catalog";
-import type { Customer, DB } from "./types";
+import { KEY_WINDOW_MIN, tierFor } from "./catalog";
+import type { Booking, Customer, DB, Locker } from "./types";
 import { DAY, HOUR, MIN, addDays, fmtShortDate, fmtWeekday, startOfDay } from "./time";
 
 // Read models for the Command Center, computed from the same shared data the customer app writes.
@@ -15,19 +15,6 @@ export function cafeRevenue(db: DB, from: number, to: number) {
   return db.orders.filter((o) => o.createdAt >= from && o.createdAt < to && o.stage !== "cancelled").reduce((s, o) => s + o.total, 0);
 }
 
-export function stayRevenue(db: DB, from: number, to: number) {
-  let sum = 0;
-  for (const s of db.stays) {
-    if (s.status === "cancelled") continue;
-    const nights = Math.max(1, Math.round((s.checkOut - s.checkIn) / DAY));
-    for (let n = 0; n < nights; n++) {
-      const night = startOfDay(s.checkIn) + n * DAY;
-      if (night >= from && night < to) sum += s.total / nights;
-    }
-  }
-  return sum;
-}
-
 export function revenueByDay(db: DB, days: number, now: number) {
   const today = startOfDay(now);
   return Array.from({ length: days }, (_, i) => {
@@ -36,14 +23,26 @@ export function revenueByDay(db: DB, days: number, now: number) {
     return {
       day,
       label: days > 8 ? fmtShortDate(day).split(" ")[0] : fmtWeekday(day),
-      values: { courts: courtRevenue(db, day, next), cafe: cafeRevenue(db, day, next), stays: stayRevenue(db, day, next) },
+      values: { courts: courtRevenue(db, day, next), cafe: cafeRevenue(db, day, next) },
     };
   });
 }
 
-export function occupancy(db: DB, day: number) {
-  const occupied = db.units.filter((u) => db.stays.some((s) => s.unitId === u.id && s.status !== "cancelled" && s.checkIn < day + DAY && s.checkOut > day + 12 * HOUR)).length;
-  return occupied / db.units.length;
+export type LockerLive = "ready" | "assigned" | "active" | "check" | "maintenance";
+
+/** What a locker is doing right now, from its own state plus the bookings that use it. */
+export function lockerLive(db: DB, l: Locker, now: number): { state: LockerLive; booking?: Booking; next?: Booking } {
+  if (l.status === "maintenance") return { state: "maintenance" };
+  const uses = db.bookings.filter((b) => b.lockerId === l.id && b.status === "confirmed").sort((a, b) => a.start - b.start);
+  const win = (b: Booking) => [b.start - KEY_WINDOW_MIN * MIN, b.start + (b.durationMin + KEY_WINDOW_MIN) * MIN] as const;
+  const active = uses.find((b) => win(b)[0] <= now && now <= win(b)[1]);
+  if (active) return { state: "active", booking: active };
+  // a session that ended since the last kit check needs a count before the next player
+  const returned = uses.filter((b) => win(b)[1] < now && win(b)[1] > l.lastCheckedAt).pop();
+  const next = uses.find((b) => win(b)[0] > now);
+  if (l.status === "check" || returned) return { state: "check", booking: returned, next };
+  if (next && next.start - now < 12 * 60 * MIN) return { state: "assigned", next };
+  return { state: "ready", next };
 }
 
 export function topItems(db: DB, from: number) {
@@ -65,17 +64,13 @@ export function customerStats(db: DB, c: Customer, now: number) {
   const spendCourts = bookings.reduce((s, b) => s + b.price, 0);
   const orders = db.orders.filter((o) => o.customerId === c.id);
   const spendCafe = orders.reduce((s, o) => s + o.total, 0);
-  const stays = db.stays.filter((s) => s.customerId === c.id && s.status !== "cancelled");
-  const spendStays = stays.reduce((s, x) => s + x.total, 0);
   return {
     sessions: bookings.filter((b) => b.start < now).length,
     upcoming: bookings.filter((b) => b.start >= now).length,
     orders: orders.length,
-    stays: stays.length,
-    spend: spendCourts + spendCafe + spendStays,
+    spend: spendCourts + spendCafe,
     spendCourts,
     spendCafe,
-    spendStays,
     tier: tierFor(c.loyalty.lifetime),
     churn: churnRisk(db, c, now),
   };

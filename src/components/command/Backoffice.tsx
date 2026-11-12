@@ -4,12 +4,12 @@ import clsx from "clsx";
 import { useMemo, useState, type ReactNode } from "react";
 import { Check, MessageCircle, Plus, Search, X } from "lucide-react";
 import { Avatar, Button, Label, Segmented } from "@/components/ui/kit";
-import { ORDER_FLOW, bookCourt, cancelBooking, checkInStay, checkOutStay, orderStage, setOrderStage, staffAction } from "@/lib/actions";
-import { can } from "@/lib/catalog";
+import { ORDER_FLOW, bookCourt, cancelBooking, kitFor, orderStage, setOrderStage, staffAction } from "@/lib/actions";
+import { KEY_WINDOW_MIN, can } from "@/lib/catalog";
 import { daySlots } from "@/lib/engine/availability";
 import { useFx } from "@/lib/fx";
 import { useNow, useStaff } from "@/lib/hooks";
-import { cafeRevenue, courtRevenue, mask } from "@/lib/ops";
+import { cafeRevenue, courtRevenue, lockerLive, mask } from "@/lib/ops";
 import { useStore } from "@/lib/store";
 import type { Booking, Order, OrderStage } from "@/lib/types";
 import { DAY, MIN, addDays, fmtAgo, fmtDate, fmtDayLabel, fmtRange, fmtTime, startOfDay } from "@/lib/time";
@@ -64,7 +64,7 @@ function Status({ children, tone }: { children: ReactNode; tone: "good" | "warn"
 }
 
 // ---------------------------------------------------------------------------
-// Reservations: courts, suites and the waitlist
+// Reservations: court bookings (with their kit locker key) and the waitlist
 // ---------------------------------------------------------------------------
 
 type Scope = "today" | "upcoming" | "past" | "all";
@@ -74,7 +74,7 @@ export function Reservations() {
   const staff = useStaff();
   const now = useNow(5_000);
   const toast = useFx((s) => s.toast);
-  const [tab, setTab] = useState<"courts" | "suites" | "waitlist">("courts");
+  const [tab, setTab] = useState<"courts" | "waitlist">("courts");
   const [scope, setScope] = useState<Scope>("today");
   const [court, setCourt] = useState<string>("all");
   const [status, setStatus] = useState<"all" | "confirmed" | "cancelled">("all");
@@ -116,9 +116,9 @@ export function Reservations() {
       </div>
 
       <div className="flex flex-wrap items-center gap-2">
-        {(["courts", "suites", "waitlist"] as const).map((t) => (
+        {(["courts", "waitlist"] as const).map((t) => (
           <button key={t} onClick={() => { setTab(t); setSel(null); }} className={clsx("rounded-full px-4 py-1.5 text-[12.5px] font-medium", tab === t ? "bg-white text-ink" : "bg-white/8 text-white/75")}>
-            {t === "courts" ? "Court bookings" : t === "suites" ? "Suite reservations" : `Waitlist · ${db.waitlist.filter((w) => w.status !== "converted").length}`}
+            {t === "courts" ? "Court bookings" : `Waitlist · ${db.waitlist.filter((w) => w.status !== "converted").length}`}
           </button>
         ))}
         {tab === "courts" && writer && (
@@ -158,6 +158,7 @@ export function Reservations() {
                     <th className="px-3 py-2.5 font-medium">Court</th>
                     <th className="px-3 py-2.5 font-medium">Guest</th>
                     <th className="px-3 py-2.5 font-medium">Players</th>
+                    <th className="px-3 py-2.5 font-medium">Kit locker</th>
                     <th className="px-3 py-2.5 font-medium">Source</th>
                     <th className="px-3 py-2.5 text-right font-medium">Paid</th>
                     <th className="px-3 py-2.5 font-medium">Status</th>
@@ -178,6 +179,7 @@ export function Reservations() {
                           <span className="flex items-center gap-2 text-white">{c && <Avatar name={c.name} hue={c.hue} size={22} />}{c?.name ?? "Walk-in"}</span>
                         </td>
                         <td className="px-3 py-2.5 text-white/65">{b.players.length + 1}{b.openMatchId ? " · open" : ""}</td>
+                        <td className="px-3 py-2.5 font-mono text-[11.5px] text-white/75">{db.lockers.find((l) => l.id === b.lockerId)?.number ?? "–"}</td>
                         <td className="px-3 py-2.5 text-white/65">{b.source === "concierge" ? "AI concierge" : b.source === "desk" ? "Front desk" : b.source === "waitlist" ? "Waitlist" : "App"}{b.recurringGroupId ? " · weekly" : ""}</td>
                         <td className="px-3 py-2.5 text-right tabular text-white">${b.price.toFixed(2)}</td>
                         <td className="px-3 py-2.5">
@@ -187,7 +189,7 @@ export function Reservations() {
                     );
                   })}
                   {!bookings.length && (
-                    <tr><td colSpan={7} className="px-3 py-6 text-center text-white/45">No bookings match these filters.</td></tr>
+                    <tr><td colSpan={8} className="px-3 py-6 text-center text-white/45">No bookings match these filters.</td></tr>
                   )}
                 </tbody>
               </table>
@@ -207,7 +209,6 @@ export function Reservations() {
         </>
       )}
 
-      {tab === "suites" && <SuiteReservations />}
 
       {tab === "waitlist" && (
         <div className="space-y-1.5">
@@ -269,7 +270,13 @@ function BookingDetail({ b, now, pii, writer, onClose, onAction }: { b: Booking;
           </div>
         </div>
         <div>
-          <Label>Digital gate pass</Label>
+          <Label>Kit locker & digital key</Label>
+          <p className="mt-1 text-white/70">
+            {b.lockerId ? `Locker ${db.lockers.find((l) => l.id === b.lockerId)?.number} · ${kitFor(b).rackets} rackets + balls` : "Locker assigned when the key is issued"} · key {fmtTime(b.start - KEY_WINDOW_MIN * MIN)} → {fmtTime(b.start + (b.durationMin + KEY_WINDOW_MIN) * MIN)}
+          </p>
+        </div>
+        <div>
+          <Label>Key usage</Label>
           <p className="mt-1 text-white/70">{pass ? `${pass.code} · ${pass.status} · ${logs.length ? `${logs.length} door event${logs.length > 1 ? "s" : ""}, last ${fmtAgo(logs[0].at, now)}` : "not used yet"}` : "No pass issued"}</p>
         </div>
         {orders.length > 0 && (
@@ -364,75 +371,6 @@ function NewBooking({ onDone }: { onDone: () => void }) {
   );
 }
 
-function SuiteReservations() {
-  const db = useStore((s) => s.db);
-  const staff = useStaff();
-  const now = useNow(10_000);
-  const toast = useFx((s) => s.toast);
-  const [scope, setScope] = useState<"active" | "all">("active");
-  const writer = can(staff?.role, "stays:write");
-  const pii = can(staff?.role, "guests:pii");
-  const stays = db.stays.filter((s) => scope === "all" || (s.status !== "checked-out" && s.status !== "cancelled")).sort((a, b) => a.checkIn - b.checkIn);
-  return (
-    <div className="space-y-3">
-      <div className="flex gap-1.5">
-        {(["active", "all"] as const).map((s) => <button key={s} onClick={() => setScope(s)} className={clsx("rounded-full px-3 py-1.5 text-[11.5px]", scope === s ? "bg-white text-ink" : "bg-white/8 text-white/70")}>{s === "active" ? "Arriving & in-house" : "All reservations"}</button>)}
-        <span className="ml-auto self-center text-[10.5px] text-white/40">Bay Suites are a planned addition · simulated reservations</span>
-      </div>
-      <div className="overflow-x-auto rounded-[22px] border border-white/8 thin-scrollbar">
-        <table className="w-full min-w-[760px] text-left text-[12px]">
-          <thead className="bg-white/[0.04] text-[10.5px] uppercase tracking-wider text-white/50">
-            <tr>
-              <th className="px-3 py-2.5 font-medium">Stay</th>
-              <th className="px-3 py-2.5 font-medium">Suite</th>
-              <th className="px-3 py-2.5 font-medium">Guest</th>
-              <th className="px-3 py-2.5 font-medium">Registration</th>
-              <th className="px-3 py-2.5 text-right font-medium">Total</th>
-              <th className="px-3 py-2.5 font-medium">Status</th>
-              <th className="px-3 py-2.5 font-medium" />
-            </tr>
-          </thead>
-          <tbody>
-            {stays.map((s) => {
-              const c = db.customers.find((x) => x.id === s.customerId);
-              const u = db.units.find((x) => x.id === s.unitId);
-              return (
-                <tr key={s.id} className={clsx("border-t border-white/5", s.createdAt <= now && now - s.createdAt < NEW_MS && "bg-sage/[0.08]")}>
-                  <td className="px-3 py-2.5 tabular text-white"><span className="flex items-center gap-1.5">{fmtDate(s.checkIn)} → {fmtDate(s.checkOut)} <NewChip at={s.createdAt} now={now} /></span></td>
-                  <td className="px-3 py-2.5 text-white/80">{u?.name}{s.packageId ? <span className="block text-[10.5px] text-gold">{db.packages.find((p) => p.id === s.packageId)?.name}</span> : null}</td>
-                  <td className="px-3 py-2.5 text-white">{c?.name}<span className="block text-[10.5px] text-white/45">{mask(c?.phone ?? "", pii)}</span></td>
-                  <td className="px-3 py-2.5 text-white/65">{s.registration ? `Done · arrives ${s.registration.arrivalTime}` : "Pending"}</td>
-                  <td className="px-3 py-2.5 text-right tabular text-white">${s.total}</td>
-                  <td className="px-3 py-2.5"><Status tone={s.status === "checked-in" ? "warn" : s.status === "reserved" ? "good" : "neutral"}>{s.status}</Status></td>
-                  <td className="px-3 py-2.5">
-                    {writer && s.status === "reserved" && (
-                      <button
-                        onClick={() => {
-                          if (!s.registration) staffAction(staff!.id, `Registered ${c?.name} at the desk`, (d) => { const x = d.stays.find((y) => y.id === s.id)!; x.registration = { completedAt: Date.now(), arrivalTime: "now", idVerified: true, rulesAccepted: true }; }, "stay.register", "stay");
-                          const r = checkInStay(s.id);
-                          toast(r.ok ? { tone: "success", title: `${c?.name.split(" ")[0]} checked in`, body: `${u?.name} smart key issued` } : { tone: "error", title: r.error });
-                        }}
-                        className="rounded-full bg-white px-3 py-1 text-[11px] font-semibold text-ink hover:bg-sage"
-                      >
-                        Check in
-                      </button>
-                    )}
-                    {writer && s.status === "checked-in" && (
-                      <button onClick={() => { const r = checkOutStay(s.id, 5); toast(r.ok ? { tone: "success", title: `${c?.name.split(" ")[0]} checked out`, body: "Key revoked · housekeeping task created" } : { tone: "error", title: r.error }); }} className="rounded-full bg-white/10 px-3 py-1 text-[11px] font-semibold text-white hover:bg-white/20">
-                        Check out
-                      </button>
-                    )}
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  );
-}
-
 // ---------------------------------------------------------------------------
 // Orders: every Sip order
 // ---------------------------------------------------------------------------
@@ -497,7 +435,7 @@ export function Orders() {
         </div>
         {(["live", "today", "all"] as const).map((s) => <button key={s} onClick={() => setScope(s)} className={clsx("rounded-full px-3 py-1.5 text-[11.5px] capitalize", scope === s ? "bg-white text-ink" : "bg-white/8 text-white/70")}>{s === "live" ? "Live" : s === "today" ? "Today" : "Last 3 weeks"}</button>)}
         <span className="mx-1 h-5 w-px bg-white/15" />
-        {(["all", "court", "suite", "pickup"] as const).map((d) => <button key={d} onClick={() => setDest(d)} className={clsx("rounded-full px-3 py-1.5 text-[11.5px] capitalize", dest === d ? "bg-white text-ink" : "bg-white/8 text-white/70")}>{d === "all" ? "All destinations" : d === "court" ? "To courts" : d === "suite" ? "To suites" : "Pickup"}</button>)}
+        {(["all", "court", "pickup"] as const).map((d) => <button key={d} onClick={() => setDest(d)} className={clsx("rounded-full px-3 py-1.5 text-[11.5px] capitalize", dest === d ? "bg-white text-ink" : "bg-white/8 text-white/70")}>{d === "all" ? "All destinations" : d === "court" ? "To courts" : "Pickup"}</button>)}
       </div>
       <div className={clsx("grid gap-4", selected && "lg:grid-cols-[1.5fr_1fr]")}>
         <div className="overflow-x-auto rounded-[22px] border border-white/8 thin-scrollbar">
@@ -523,7 +461,7 @@ export function Orders() {
                     <td className="px-3 py-2.5 text-white/65">{fmtDayLabel(o.createdAt, now) === "Today" ? fmtTime(o.createdAt) : `${fmtDate(o.createdAt).slice(4)} ${fmtTime(o.createdAt)}`}</td>
                     <td className="px-3 py-2.5 text-white">{c?.name}</td>
                     <td className="max-w-[220px] truncate px-3 py-2.5 text-white/75">{o.lines.map((l) => `${l.qty}× ${l.name}`).join(", ")}</td>
-                    <td className="px-3 py-2.5"><span className={clsx("text-[11.5px] font-semibold", o.deliverTo.kind === "court" ? "text-sage" : o.deliverTo.kind === "suite" ? "text-[#9dbbff]" : "text-white/60")}>{o.deliverTo.label}</span></td>
+                    <td className="px-3 py-2.5"><span className={clsx("text-[11.5px] font-semibold", o.deliverTo.kind === "court" ? "text-sage" : "text-white/60")}>{o.deliverTo.label}</span></td>
                     <td className="px-3 py-2.5 text-right tabular text-white">${o.total.toFixed(2)}</td>
                     <td className="px-3 py-2.5"><Status tone={STAGE_TONE[st]}>{ORDER_FLOW.find((f) => f.stage === st)?.label ?? st}</Status></td>
                   </tr>
@@ -610,6 +548,8 @@ export function useOwnerKpis() {
   const newBookings = db.bookings.filter((b) => b.kind !== "maintenance" && b.createdAt >= now - 60 * MIN).length;
   const orders = db.orders.filter((o) => o.createdAt >= today).length;
   const live = db.orders.filter((o) => !["delivered", "cancelled"].includes(orderStage(o, now))).length;
-  const inHouse = db.stays.filter((s) => s.status === "checked-in").length;
-  return { revenue: court + cafe, court, cafe, bookings, newBookings, orders, live, inHouse };
+  const states = db.lockers.map((l) => lockerLive(db, l, now).state);
+  const keysActive = states.filter((s) => s === "active").length;
+  const lockersToCheck = states.filter((s) => s === "check").length;
+  return { revenue: court + cafe, court, cafe, bookings, newBookings, orders, live, keysActive, lockersToCheck };
 }

@@ -68,14 +68,14 @@ export default function Venue2D({ className = "" }: { className?: string }) {
           ))}
           <text x="470" y="440" fill={night ? "#fff" : "#235c62"} fontSize="10" textAnchor="middle" letterSpacing="2">THE CLUB</text>
         </g>
-        {/* suites (planned) */}
-        {[0, 1, 2, 3].map((i) => (
-          <g key={i} onClick={() => pick("suite", `sp${i + 1}`)} className="cursor-pointer">
-            <rect x="82" y={40 + i * 70} width="38" height="46" rx="16" fill="#f5f1e8" stroke={focusId === `sp${i + 1}` ? "#82be9d" : "#c9b89a"} strokeDasharray="4 3" strokeWidth="2" />
-          </g>
-        ))}
-        <text x="100" y="335" fill={night ? "#a9d4bc" : "#235c62"} fontSize="9" textAnchor="middle" letterSpacing="2">BAY SUITES</text>
-        <text x="100" y="347" fill={night ? "#a9d4bc" : "#235c62"} fontSize="8" textAnchor="middle" letterSpacing="2">(PLANNED)</text>
+        {/* kit lockers */}
+        <g onClick={() => pick("locker", "all")} className="cursor-pointer">
+          <rect x="140" y="262" width="200" height="34" rx="10" fill={night ? "#16353a" : "#235c62"} stroke={zone === "lockers" ? "#ffffff" : "#3fd6c8"} strokeWidth="2" />
+          {Array.from({ length: 12 }, (_, i) => (
+            <rect key={i} x={148 + i * 15.5} y="270" width="12" height="18" rx="2" fill="#82be9d" opacity="0.85" />
+          ))}
+          <text x="240" y="312" fill={night ? "#a9d4bc" : "#235c62"} fontSize="10" textAnchor="middle" letterSpacing="2">KIT LOCKERS · RACKETS & BALLS</text>
+        </g>
       </svg>
     </div>
   );

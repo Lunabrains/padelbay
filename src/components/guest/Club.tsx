@@ -207,7 +207,7 @@ export default function Club() {
                   </li>
                 ))}
               </ul>
-              <p className="mt-3 text-[10.5px] text-white/45">Earn 1 pt per $1 on courts and stays, 2 pts per $1 at Sip, plus achievement bonuses. Tap a character on the club deck to meet it.</p>
+              <p className="mt-3 text-[10.5px] text-white/45">Earn 1 pt per $1 on courts, 2 pts per $1 at Sip, plus achievement bonuses. Tap a character on the club deck to meet it.</p>
             </div>
             <div>
               <Label>Weekly challenges</Label>

@@ -1,6 +1,7 @@
 "use client";
 
-import { bookCourt, bookStay, cancelBooking, placeOrder, unitAvailable } from "./actions";
+import { bookCourt, cancelBooking, ensureCourtPass, placeOrder, unlockDoor } from "./actions";
+import { KEY_WINDOW_MIN } from "./catalog";
 import { slotStatus } from "./engine/availability";
 import { getDB } from "./store";
 import type { OrderLine } from "./types";
@@ -11,7 +12,7 @@ import { MIN, addDays, atHour, startOfDay } from "./time";
 
 const pick = <T,>(a: T[]) => a[Math.floor(Math.random() * a.length)];
 
-export type SimKind = "booking" | "order" | "stay" | "cancel";
+export type SimKind = "booking" | "order" | "locker" | "cancel";
 
 export function simulateOnce(kind?: SimKind): string | null {
   const db = getDB();
@@ -19,7 +20,7 @@ export function simulateOnce(kind?: SimKind): string | null {
   const members = db.customers.filter((c) => !c.isDemoGuest);
   if (!members.length) return null;
   const r = Math.random();
-  const k: SimKind = kind ?? (r < 0.45 ? "booking" : r < 0.85 ? "order" : r < 0.93 ? "stay" : "cancel");
+  const k: SimKind = kind ?? (r < 0.45 ? "booking" : r < 0.85 ? "order" : r < 0.93 ? "locker" : "cancel");
 
   if (k === "booking") {
     for (let attempt = 0; attempt < 40; attempt++) {
@@ -67,18 +68,18 @@ export function simulateOnce(kind?: SimKind): string | null {
     return res.ok ? `Sip order #${res.value.number} · ${customer.name}` : null;
   }
 
-  if (k === "stay") {
-    for (let attempt = 0; attempt < 20; attempt++) {
-      const unit = pick(db.units);
-      const arrival = addDays(startOfDay(now), 2 + Math.floor(Math.random() * 14));
-      const nights = 1 + Math.floor(Math.random() * 3);
-      if (!unitAvailable(db, unit.id, atHour(arrival, 15), atHour(addDays(arrival, nights), 11))) continue;
-      const c = pick(members);
-      const pkg = Math.random() < 0.4 ? db.packages.find((p) => p.unitType === unit.type && p.nights === nights) : undefined;
-      const res = bookStay({ customerId: c.id, unitId: unit.id, arrivalDay: arrival, nights, guests: Math.min(unit.capacity, 2), packageId: pkg?.id, method: "Apple Pay" });
-      if (res.ok) return `Stay · ${c.name} · ${unit.name}`;
-    }
-    return null;
+  if (k === "locker") {
+    // a player arriving: their club card opens the kit locker inside the key window
+    const inWindow = db.bookings.filter(
+      (b) => b.status === "confirmed" && b.kind !== "maintenance" && b.start - KEY_WINDOW_MIN * MIN <= now && now <= b.start + (b.durationMin + KEY_WINDOW_MIN) * MIN,
+    );
+    if (!inWindow.length) return null;
+    const b = pick(inWindow);
+    const key = ensureCourtPass(b.id);
+    if (!key.ok) return null;
+    const res = unlockDoor(key.value, "Card", { door: "locker" });
+    const c = db.customers.find((x) => x.id === b.customerId);
+    return res.ok ? `${res.value.door} opened · ${c?.name ?? "guest"}` : null;
   }
 
   // cancel: a member drops an upcoming session, the recovery flow kicks in
@@ -92,7 +93,7 @@ export function simulateOnce(kind?: SimKind): string | null {
 const HOUR_MS = 60 * MIN;
 
 export function simulateBurst(n = 8) {
-  const kinds: SimKind[] = ["booking", "order", "booking", "order", "stay", "order", "booking", "cancel", "order", "booking"];
+  const kinds: SimKind[] = ["booking", "order", "booking", "order", "locker", "order", "booking", "cancel", "order", "booking"];
   const done: string[] = [];
   for (let i = 0; i < n; i++) {
     const r = simulateOnce(kinds[i % kinds.length]);

@@ -155,7 +155,7 @@ export default function CourtsBooking() {
           {pass && customer && (
             <div className="space-y-3">
               <p className="flex items-center gap-2 rounded-2xl bg-white/6 px-3.5 py-2.5 text-[12.5px] text-white/80">
-                <span className="h-2 w-2 rounded-full bg-sage" /> Your Padel Bay Club card now opens the <span className="font-semibold text-white">{pass.door}</span>, from {fmtTime(pass.validFrom)}.
+                <span className="h-2 w-2 rounded-full bg-sage" /> Your digital key opens <span className="font-semibold text-white">{pass.door}</span> (rackets + balls) and the {court.short} gate from <span className="font-semibold text-white">{fmtTime(pass.validFrom)}</span> until {fmtTime(pass.validTo)}.
               </p>
               <MemberCard customer={customer} compact />
               <CardAccess customer={customer} />

@@ -30,7 +30,7 @@ export default function Me() {
   if (!customer) {
     return (
       <ZonePanel kicker="Padel Bay Club" title={<>get your<br />club card.</>}>
-        <p className="mb-3 text-[13px] leading-relaxed text-white/70">One card for everything: your loyalty level and points, the gate of every court you book, and your Bay Suite door after check-in.</p>
+        <p className="mb-3 text-[13px] leading-relaxed text-white/70">One card for everything: your loyalty level and points, and the digital key for every court you book. It opens your kit locker (rackets + balls) and the court gate 10 minutes before you play.</p>
         <JoinCard reason="and get your card" />
       </ZonePanel>
     );
@@ -54,7 +54,7 @@ export default function Me() {
             if (t === "inbox") markNoticesRead("customer", customer.id);
           }}
           items={[
-            { id: "card", label: "Club card", badge: passes.length },
+            { id: "card", label: "Card & keys", badge: upcoming.length },
             { id: "bookings", label: "Bookings", badge: upcoming.length },
             { id: "inbox", label: "Inbox", badge: unread },
           ]}
