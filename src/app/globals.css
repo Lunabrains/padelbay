@@ -1,26 +1,224 @@
 @import "tailwindcss";
 
+/*
+ * Padel Bay brand tokens.
+ * Sampled from padelbaycourts.com and the @padelbaycourts logo:
+ * teal "padel", sage "bay", sunset hero sky, Ramlet El Baida sand,
+ * and the timber canopy of the Sip café pavilion.
+ */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --pb-ink: #071315;
+  --pb-night: #0a1d20;
+  --pb-deep: #0f3a3f;
+  --pb-teal: #235c62;
+  --pb-teal-soft: #3f7b80;
+  --pb-sage: #82be9d;
+  --pb-sage-soft: #a9d4bc;
+  --pb-mint: #d7ecdf;
+  --pb-sunset: #f28a3b;
+  --pb-ember: #e8693a;
+  --pb-gold: #f6b26b;
+  --pb-sand: #efe6d8;
+  --pb-cream: #f7f2ea;
+  --pb-timber: #c46a3a;
+  --pb-ball: #8cc63f;
+  --pb-danger: #ef6b5b;
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --color-ink: var(--pb-ink);
+  --color-night: var(--pb-night);
+  --color-deep: var(--pb-deep);
+  --color-teal: var(--pb-teal);
+  --color-teal-soft: var(--pb-teal-soft);
+  --color-sage: var(--pb-sage);
+  --color-sage-soft: var(--pb-sage-soft);
+  --color-mint: var(--pb-mint);
+  --color-sunset: var(--pb-sunset);
+  --color-ember: var(--pb-ember);
+  --color-gold: var(--pb-gold);
+  --color-sand: var(--pb-sand);
+  --color-cream: var(--pb-cream);
+  --color-timber: var(--pb-timber);
+  --color-ball: var(--pb-ball);
+  --color-danger: var(--pb-danger);
+
+  --font-display: var(--font-comfortaa), ui-rounded, system-ui, sans-serif;
+  --font-sans: var(--font-montserrat), ui-sans-serif, system-ui, sans-serif;
+
+  --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+html {
+  background: var(--pb-night);
+  color-scheme: dark;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--pb-night);
+  color: #f4f7f5;
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  -webkit-tap-highlight-color: transparent;
+}
+
+::selection {
+  background: color-mix(in srgb, var(--pb-sage) 55%, transparent);
+  color: var(--pb-ink);
+}
+
+/* Floating glass surfaces ------------------------------------------------ */
+@utility glass {
+  background: linear-gradient(
+    155deg,
+    rgb(255 255 255 / 0.13) 0%,
+    rgb(255 255 255 / 0.06) 45%,
+    rgb(255 255 255 / 0.04) 100%
+  );
+  backdrop-filter: blur(26px) saturate(1.35);
+  -webkit-backdrop-filter: blur(26px) saturate(1.35);
+  border: 1px solid rgb(255 255 255 / 0.14);
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.12),
+    0 30px 80px -30px rgb(0 0 0 / 0.65);
+}
+
+@utility glass-dark {
+  background: linear-gradient(
+    160deg,
+    rgb(10 29 32 / 0.82) 0%,
+    rgb(7 19 21 / 0.74) 100%
+  );
+  backdrop-filter: blur(30px) saturate(1.4);
+  -webkit-backdrop-filter: blur(30px) saturate(1.4);
+  border: 1px solid rgb(130 190 157 / 0.16);
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.06),
+    0 40px 90px -30px rgb(0 0 0 / 0.8);
+}
+
+@utility glass-chip {
+  background: rgb(255 255 255 / 0.08);
+  border: 1px solid rgb(255 255 255 / 0.12);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+}
+
+@utility label-caps {
+  font-family: var(--font-sans);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+}
+
+@utility no-scrollbar {
+  scrollbar-width: none;
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+@utility thin-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: rgb(255 255 255 / 0.18) transparent;
+}
+
+@utility tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Two-tone brand wordmark: the official logo used as a mask, "padel" teal and "bay" sage. */
+.pb-logo {
+  -webkit-mask: url("/brand/padelbay-logo.webp") center / contain no-repeat;
+  mask: url("/brand/padelbay-logo.webp") center / contain no-repeat;
+  aspect-ratio: 1419 / 338;
+}
+
+@keyframes pb-float {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-6px);
+  }
+}
+
+@keyframes pb-pulse-ring {
+  0% {
+    transform: scale(0.85);
+    opacity: 0.7;
+  }
+  100% {
+    transform: scale(1.9);
+    opacity: 0;
+  }
+}
+
+@keyframes pb-shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+@keyframes pb-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes pb-rise {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-float {
+  animation: pb-float 5s ease-in-out infinite;
+}
+.animate-pulse-ring {
+  animation: pb-pulse-ring 1.8s var(--ease-out-expo) infinite;
+}
+.animate-rise {
+  animation: pb-rise 0.6s var(--ease-out-expo) both;
+}
+.shimmer {
+  background: linear-gradient(
+    90deg,
+    rgb(255 255 255 / 0.04) 0%,
+    rgb(255 255 255 / 0.12) 50%,
+    rgb(255 255 255 / 0.04) 100%
+  );
+  background-size: 200% 100%;
+  animation: pb-shimmer 1.6s linear infinite;
+}
+
+/* Reduced motion: keep every state change, drop the movement. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+html[data-motion="reduced"] *,
+html[data-motion="reduced"] *::before,
+html[data-motion="reduced"] *::after {
+  animation-duration: 0.001ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.001ms !important;
 }
